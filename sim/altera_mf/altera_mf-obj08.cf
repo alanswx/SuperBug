@@ -1,0 +1,20 @@
+v 4
+file "/Users/alans/Documents/development/verilog/SuperBug/sim/" "altera_mf_components.vhd" "bf677937506dea9727041199cbc792443fcdaf73" "20190818014342.771":
+  package altera_mf_components at 19( 1055) + 0 on 707;
+file "/Users/alans/Documents/development/verilog/SuperBug/sim/" "altera_mf.vhd" "6883a13a6a0fd8283a81577b62de1053a16ba078" "20190818014341.290":
+  entity lcell at 25( 1144) + 0 on 691;
+  architecture behavior of lcell at 32( 1350) + 0 on 692;
+  package altera_common_conversion at 38( 1453) + 0 on 693 body;
+  package body altera_common_conversion at 55( 2164) + 0 on 694;
+  package altera_mf_hint_evaluation at 327( 11365) + 0 on 695 body;
+  package body altera_mf_hint_evaluation at 337( 11690) + 0 on 696;
+  package altera_device_families at 414( 15157) + 0 on 697 body;
+  package body altera_device_families at 476( 19416) + 0 on 698;
+  package mf_pllpack at 1083( 45663) + 0 on 699 body;
+  package body mf_pllpack at 1174( 49946) + 0 on 700;
+  entity altsyncram at 1741( 69166) + 0 on 701;
+  architecture translated of altsyncram at 2574( 115783) + 0 on 702;
+  entity altshift_taps at 4783( 229960) + 0 on 703;
+  architecture behavioural of altshift_taps at 4817( 231372) + 0 on 704;
+  entity scfifo at 4884( 233339) + 0 on 705;
+  architecture behavior of scfifo at 4933( 235030) + 0 on 706;
