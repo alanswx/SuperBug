@@ -154,8 +154,8 @@ end process;
 
 -- Assign various signals
 clk_6 <= h_counter(0);
---clk6_n <= (not h_counter(0));
-clk6_n <= not clk_6;
+clk6_n <= (not h_counter(0));
+--clk6_n <= not clk_6;
 H1 <= h_counter(1);
 H2 <= h_counter(2);
 H4 <= h_counter(3);

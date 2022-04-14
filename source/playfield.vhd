@@ -211,24 +211,24 @@ PF_RAM_Adr <= PVP(7 downto 4) & PHP(7 downto 4) when VBlank = '0' else BA(7 down
 PFRAM_Din <= BD when BD_en = '0' else (others => '1'); 
 
 -- B7 LS109
-B7_CRASH: entity work.JK_FF_VHDL 
-port map( 
-	Clock=>Clk6,
-	J=>'0',
-	K=>Crash_n,
-	Reset=>'0',
-	Clock_enable=>CrashReset_n,
-	Output=>CrashIn_n
-    );
-B7_SKID: entity work.JK_FF_VHDL 
-port map( 
-	Clock=>Clk6,
-	J=>'0',
-	K=>Skid_n,
-	Reset=>'0',
-	Clock_enable=>SkidReset_n,
-	Output=>SkidIn_n
-    );
+--B7_CRASH: entity work.JK_FF_VHDL 
+--port map( 
+--	Clock=>Clk6,
+--	J=>'0',
+--	K=>Crash_n,
+--	Reset=>'0',
+--	Clock_enable=>CrashReset_n,
+--	Output=>CrashIn_n
+--    );
+--B7_SKID: entity work.JK_FF_VHDL 
+--port map( 
+--	Clock=>Clk6,
+--	J=>'0',
+--	K=>Skid_n,
+--	Reset=>'0',
+--	Clock_enable=>SkidReset_n,
+--	Output=>SkidIn_n
+--    );
 
 
 

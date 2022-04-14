@@ -299,22 +299,32 @@ Opt_n 	<= '0' when SysEn = '1' and Adr(9) = '1' and Adr(7 downto 5) = "010" else
 Out2_n 	<= '0' when SysEn = '1' and Adr(9) = '1' and Adr(7 downto 5) = "011" else '1';
 -- ASR (where does this go?)	-- Audio related
 
--- 74LS175 at C9
 OutputLatch: process(Adr, Out2_n)
 begin
-       if (Reset='1') then
-		StartLamp <= '0';
-		TrakSelLamp <= '0';
-		Attract <= '0';
-		Flash <= '0';
+        if rising_edge(Out2_n) then
+                StartLamp <= Adr(0);
+                TrakSelLamp <= Adr(3);
+                Attract <= Adr(1);
+                Flash <= Adr(2);
         end if;
-	if rising_edge(Out2_n) then
-		StartLamp <= Adr(0);
-		TrakSelLamp <= Adr(3);
-		Attract <= Adr(1);
-		Flash <= Adr(2);
-	end if;
 end process;
+
+-- 74LS175 at C9
+--OutputLatch: process(Adr, Out2_n)
+--begin
+--       if (Reset='1') then
+--		StartLamp <= '0';
+--		TrakSelLamp <= '0';
+--		Attract <= '0';
+--		Flash <= '0';
+--        end if;
+--	if rising_edge(Out2_n) then
+--		StartLamp <= Adr(0);
+--		TrakSelLamp <= Adr(3);
+--		Attract <= Adr(1);
+--		Flash <= Adr(2);
+--	end if;
+--end process;
 			
 
 -- CPU data in mux
