@@ -1,0 +1,9 @@
+srec_cat 009121d1.hex --Intel -o hex/009121d1.hex --ascii_hex
+srec_cat 009122c1.hex --Intel -o hex/009122c1.hex --ascii_hex
+srec_cat 009123a1.hex  --Intel -o hex/009123a1.hex --ascii_hex
+srec_cat 009124m3.hex  --Intel -o hex/009124m3.hex --ascii_hex
+srec_cat 009125k6.hex  --Intel -o hex/009125k6.hex --ascii_hex
+srec_cat 009126f5.hex  --Intel -o hex/009126f5.hex --ascii_hex
+srec_cat 009127e5.hex  --Intel -o hex/009127e5.hex --ascii_hex
+srec_cat 009471n3.hex  --Intel -o hex/009471n3.hex --ascii_hex
+srec_cat 009472h5.hex  --Intel -o hex/009472h5.hex --ascii_hex
