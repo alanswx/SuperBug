@@ -126,7 +126,7 @@ module synchronizer(
     
     assign prom_address = {sync_reg[3], V128, V64, V16, V8, V4, V2, V1};
     
-    work.prom M2(
+    prom M2(
         .address(prom_address),
         .data(sync_bus)
     );
