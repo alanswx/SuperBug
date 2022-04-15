@@ -438,7 +438,7 @@ port(
 			);
 end superbug;
 */
-	wire DIP_Sw = 8'b10100000; //-- Config dip switches
+	wire [7:0] DIP_Sw = 8'b10100000; //-- Config dip switches
 
 superbug superbug(
 	.Clk_50_I(CLK_50M),

@@ -82,7 +82,7 @@ module superbug(
     output       clk_6_O;
     input [7:0]  DIP_Sw;
     // signals that carry the ROM data from the MiSTer disk
-    input [15:0] dn_addr;
+    input [16:0] dn_addr;
     input [7:0]  dn_data;
     input        dn_wr;
     
