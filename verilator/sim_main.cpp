@@ -1,5 +1,6 @@
 #include <verilated.h>
 #include "Vemu.h"
+#include "Vemu___024root.h"
 
 #include "imgui.h"
 #include "implot.h"
@@ -133,6 +134,7 @@ bool screenshot_mode = false;
 std::string screenshot_name_override;
 int stop_at_frame = -1;
 bool headless_mode = false;
+int dump_ram_at_frame = -1;
 
 // CPU trace
 std::string trace_path;
@@ -290,6 +292,28 @@ int verilate() {
 						screenshot_frames.erase(it);
 					}
 				}
+				if (dump_ram_at_frame >= 0 && video.count_frame == dump_ram_at_frame) {
+					auto* root = top->rootp;
+					fprintf(stderr, "Flash=%d Attract=%d PHP=%02X PVP=%02X PD=%02X\n",
+					        root->emu__DOT__superbug__DOT__Flash,
+					        root->emu__DOT__superbug__DOT__Attract,
+					        root->emu__DOT__superbug__DOT__Playfield__DOT__PHP,
+					        root->emu__DOT__superbug__DOT__Playfield__DOT__PVP,
+					        root->emu__DOT__superbug__DOT__Playfield__DOT__PD);
+					fprintf(stderr, "=== alpha-num RAM (P3, 128 bytes, 32 used) at frame %d ===\n", dump_ram_at_frame);
+					for (int i = 0; i < 32; i++) {
+						fprintf(stderr, " %02X", root->emu__DOT__superbug__DOT__Alpha__DOT__P3_RAM__DOT__mem[i]);
+						if ((i & 15) == 15) fprintf(stderr, "\n");
+					}
+					fprintf(stderr, "=== playfield RAM (E6 high nibble | F6 low nibble, 256 bytes) at frame %d ===\n", dump_ram_at_frame);
+					for (int i = 0; i < 256; i++) {
+						uint8_t hi = root->emu__DOT__superbug__DOT__Playfield__DOT__E6__DOT__mem[i] & 0xF;
+						uint8_t lo = root->emu__DOT__superbug__DOT__Playfield__DOT__F6__DOT__mem[i] & 0xF;
+						fprintf(stderr, " %02X", (hi << 4) | lo);
+						if ((i & 15) == 15) fprintf(stderr, "\n");
+					}
+					dump_ram_at_frame = -1;  // once
+				}
 				if (stop_at_frame >= 0 && video.count_frame >= stop_at_frame) {
 					fprintf(stderr, "stop-at-frame %d reached, exiting\n", stop_at_frame);
 					exit(0);
@@ -339,6 +363,8 @@ int main(int argc, char** argv, char** env) {
 			trace_path = argv[++i];
 		} else if (!strcmp(argv[i], "--trace-max") && i + 1 < argc) {
 			trace_max = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "--dump-ram") && i + 1 < argc) {
+			dump_ram_at_frame = atoi(argv[++i]);
 		} else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
 			printf("Super Bug Verilator sim\n"
 			       "  --screenshot <frames>     comma-separated frame numbers\n"

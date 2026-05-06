@@ -199,15 +199,29 @@ module playfield(
         .q(PD[7:4])
     );
     
-    // Wren is active-low on real hardware so this is a NAND gate	
-    assign PF_Wren = (VBlank & RnW & Sys_En);
+    // Wren is active-low on real hardware so this is a NAND gate.
+    // Schematic gates writes by VBlank to avoid mid-scanline display
+    // glitches. Our cpu68 is several x slower per scanline than the real
+    // 6800, so the NMI handler doesn't fit inside the 16-line VBlank
+    // window — most playfield writes would otherwise be discarded.
+    // Allow writes any time the CPU is at the playfield-RAM range; the
+    // mux at PF_RAM_Adr already routes the right address.
+    assign PF_Wren = (RnW & Sys_En & PfldRAM);
     assign PfldRAM = (Sys_En & BA[10] & BA[8]);
     assign PF_RAMce_n = (~(((~VBlank)) | PfldRAM));
     
-    assign BD_en = (~(VBlank & PfldRAM & RnW));
+    // Same VBlank-gate issue as PF_Wren above: with the slow cpu68 most
+    // playfield writes land outside VBlank. Drop the VBlank gate so the
+    // CPU's BD reaches PFRAM_Din whenever the CPU is writing the
+    // playfield address range, not just during retrace.
+    assign BD_en = (~(PfldRAM & RnW));
     
-    assign PF_RAM_Adr = (VBlank == 1'b0) ? {PVP[7:4], PHP[7:4]} : 
-                        BA[7:0];
+    // Route CPU's BA[7:0] when the CPU is accessing the playfield range;
+    // otherwise the display H/V counters drive the RAM address. Original
+    // gate was on VBlank only, which assumed the program writes finish
+    // inside the vertical retrace — true on the real 6800 (~750 kHz)
+    // but not in our cpu68 sim (much higher cycles/instr).
+    assign PF_RAM_Adr = PfldRAM ? BA[7:0] : {PVP[7:4], PHP[7:4]};
     
     // Check data bus paths carefully
     assign PFRAM_Din = (BD_en == 1'b0) ? BD : 
@@ -237,30 +251,44 @@ module playfield(
     assign PfCarVid = (Pfld & CarVideo);
     assign Skid_n = (~(PfCarVid & (~(CrashCode | SkidCode_n))));
     
-    // 74191 counters at C5 and E8
-    
+`ifdef SIMULATION
+    // Sim-only: count writes that actually fire so we can tell from the
+    // outside whether the CPU is reaching the playfield RAM.
+    integer pf_write_count = 0;
+    always @(posedge Clk6) begin
+        if (PF_Wren) begin
+            pf_write_count <= pf_write_count + 1;
+        end
+    end
+`endif
+
+    // 74191 counters at C5 and E8.
+    // PHP is the horizontal pixel counter — must tick every Clk6 so that
+    // PHP[3:2] varies per pixel within a tile (drives the ROM column index)
+    // and PHP[1:0] cycles to fire LoadPd every 4 pixels. Original VHDL
+    // gating `((not H256) nand VBlank) = '0'` confines increments to a
+    // tiny VBlank window, which is wrong for raster scrolling — the
+    // playfield never renders because LoadPd never fires during display.
     always @(posedge Clk6)
     begin: PHP_count
         if (PHP_Load_n == 1'b0)
             PHP <= BD;
-        else 
-        begin
-            if ((~(((~H256)) & VBlank)) == 1'b0)
-                PHP <= PHP + 1;
-        end
+        else
+            PHP <= PHP + 1;
     end
     
-    // 74191 counters at D5 and F8
-    
-    always @(posedge Clk6)
+    // 74191 counters at D5 and F8.
+    // Clock is HSync (one increment per scanline), NOT Clk6 — original VHDL
+    // says `rising_edge(HSync)`. The X-HDL port mistranslated this to Clk6
+    // which made PVP cycle hundreds of times per scanline, sweeping the
+    // playfield-RAM address mid-scanline and turning the display into
+    // averaged grey noise.
+    always @(posedge HSync)
     begin: PVP_count
         if (PVP_Load_n == 1'b0)
             PVP <= BD;
-        else 
-        begin
-            if (VBlank == 1'b0)
-                PVP <= PVP + 1;
-        end
+        else if (VBlank == 1'b0)
+            PVP <= PVP + 1;
     end
     
     //N9 and L10

@@ -105,7 +105,16 @@ module alpha_numerics(
     //BA10and8 <= (BA(10) and BA(8));
     assign BA10and8 = BA[10] & (~BA[8]);
     assign BA12nor11 = ~(BA[12] | BA[11]);
-    assign Sys_en = (BVMA & BA12nor11 & Phi2);
+    // Drop the Phi2 gate. In the schematic Sys_en is gated by Phi2 so
+    // that the strobe only fires while phase 2 is high; in Verilator the
+    // CPU samples its data_in / drives its data_out at the negedge of
+    // Phi2, by which point Phi2 has already fallen and the gate is off.
+    // Same race as the SysEn_rd fix in cpu_mem.v. Sys_en here feeds the
+    // alpha-RAM Mux_select decode and is also exported to the playfield
+    // module for its PfldRAM/PF_Wren decode; both want the address
+    // window to be visible across the whole CPU access cycle, not just
+    // its phase-2-high half.
+    assign Sys_en = (BVMA & BA12nor11);
     assign BVMA = VMA;		//((not BA(14)) and VMA);
     
     // Mux_select=1 when CPU is at the alphanumeric RAM ($0400-$041F per MAME):
