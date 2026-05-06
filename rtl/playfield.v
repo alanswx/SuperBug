@@ -161,22 +161,21 @@ module playfield(
         .q(H5_Dout)
     );
     
-    // CE lines are labeled strangely on schematic
-    
+    // CE lines are labeled strangely on schematic — original VHDL was
+    // uncertain about the mapping. Per MAME's ROM region layout for the
+    // `tiles` set (F5 at $000, H5 at $400, E5 at $800, E5-reload at $C00),
+    // the natural mapping for PD[5:4] is 00->F5, 01->H5, 10->E5, 11->E5.
+    // Original VHDL had 01->E5 and 10->H5 (swapped), which made the
+    // playfield render the wrong tiles for half the codes.
     always @(*)
     begin: PF_ROM_mux
         Vid <= {4{1'b0}};
         case (PD[5:4])
-            2'b00 :
-                Vid <= F5_Dout;
-            2'b01 :
-                Vid <= E5_Dout;
-            2'b10 :
-                Vid <= H5_Dout;
-            2'b11 :
-                Vid <= E5_Dout;
-            default :
-                ;
+            2'b00 : Vid <= F5_Dout;
+            2'b01 : Vid <= H5_Dout;
+            2'b10 : Vid <= E5_Dout;
+            2'b11 : Vid <= E5_Dout;
+            default : ;
         endcase
     end
     
