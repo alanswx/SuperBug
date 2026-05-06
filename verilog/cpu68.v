@@ -1,64 +1,19 @@
-//===========================================================================--
+//===========================================================================
 //
-//  S Y N T H E Z I A B L E    CPU68   C O R E
+//  S Y N T H E S I Z A B L E    CPU68   C O R E
 //
-//  www.OpenCores.Org - December 2002
-//  This core adheres to the GNU public license  
+//  Verilog port of John E. Kent's cpu68.vhd (OpenCores, 2002-2004).
+//  Hand-written, from-scratch translation of the original VHDL.
+//  The previous Verilog in this tree was the output of a broken auto-converter
+//  and did not function; this file replaces it.
 //
-// File name      : cpu68.vhd
+//  Implements a Motorola 6800 compatible core with the 6801 additions
+//  (LSRD/ASLD, MUL, PSHX/PULX, ABX, ADDD/SUBD, LDD/STD, LDX immediate, etc.).
+//  Falling-edge clocked, matching the original VHDL.
 //
-// Purpose        : Implements a 6800 compatible CPU core with some
-//                  additional instructions found in the 6801
-//                  
-// Dependencies   : ieee.Std_Logic_1164
-//                  ieee.std_logic_unsigned
-//
-// Author         : John E. Kent      
-//
-//===========================================================================----
-//
-// Revision History:
-//
-// Date:          Revision         Author
-// 22 Sep 2002    0.1              John Kent
-//
-// 30 Oct 2002    0.2              John Kent
-// made NMI edge triggered
-//
-// 30 Oct 2002    0.3              John Kent
-// more corrections to NMI
-// added wai_wait_state to prevent stack overflow on wai.
-//
-//  1 Nov 2002    0.4              John Kent
-// removed WAI states and integrated WAI with the interrupt service routine
-// replace Data out (do) and Data in (di) register with a single Memory Data (md) reg.
-// Added Multiply instruction states.
-// run ALU and CC out of CPU module for timing measurements.
-// 
-//  3 Nov 2002    0.5              John Kent
-// Memory Data Register was not loaded on Store instructions
-// SEV and CLV were not defined in the ALU
-// Overflow Flag on NEG was incorrect
-//
-// 16th Feb 2003  0.6              John Kent
-// Rearranged the execution cycle for dual operand instructions
-// so that occurs during the following fetch cycle.
-// This allows the reduction of one clock cycle from dual operand
-// instruction. Note that this also necessitated re-arranging the
-// program counter so that it is no longer incremented in the ALU.
-// The effective address has also been re-arranged to include a 
-// separate added. The STD (store accd) now sets the condition codes.
-//
-// 28th Jun 2003 0.7               John Kent
-// Added Hold and Halt signals. Hold is used to steal cycles from the
-// CPU or add wait states. Halt puts the CPU in the inactive state
-// and is only honoured in the fetch cycle. Both signals are active high.
-//
-// 9th Jan 2004 0.8						John Kent
-// Clear instruction did an alu_ld8 rather than an alu_clr, so
-// the carry bit was not cleared correctly.
-// This error was picked up by Michael Hassenfratz.
-//
+//===========================================================================
+
+`default_nettype none
 
 module cpu68(
     clk,
@@ -73,4512 +28,1382 @@ module cpu68(
     irq,
     nmi,
     test_alu,
-    test_cc
+    test_cc,
+    dbg_pc,
+    dbg_opcode,
+    dbg_addr,
+    dbg_din,
+    dbg_op_fetch,
+    dbg_acca,
+    dbg_accb,
+    dbg_cc
 );
     input             clk;
     input             rst;
     output reg        rw;
     output reg        vma;
     output reg [15:0] address;
-    input [7:0]       data_in;
+    input      [7:0]  data_in;
     output reg [7:0]  data_out;
     input             hold;
     input             halt;
     input             irq;
     input             nmi;
-    output reg [15:0] test_alu;
-    output reg [7:0]  test_cc;
-    
-    
-    parameter         SBIT = 7;
-    parameter         XBIT = 6;
-    parameter         HBIT = 5;
-    parameter         IBIT = 4;
-    parameter         NBIT = 3;
-    parameter         ZBIT = 2;
-    parameter         VBIT = 1;
-    parameter         CBIT = 0;
-    
-    parameter [5:0]   state_type_reset_state = 0,
-                      state_type_fetch_state = 1,
-                      state_type_decode_state = 2,
-                      state_type_extended_state = 3,
-                      state_type_indexed_state = 4,
-                      state_type_read8_state = 5,
-                      state_type_read16_state = 6,
-                      state_type_immediate16_state = 7,
-                      state_type_write8_state = 8,
-                      state_type_write16_state = 9,
-                      state_type_execute_state = 10,
-                      state_type_halt_state = 11,
-                      state_type_error_state = 12,
-                      state_type_mul_state = 13,
-                      state_type_mulea_state = 14,
-                      state_type_muld_state = 15,
-                      state_type_mul0_state = 16,
-                      state_type_mul1_state = 17,
-                      state_type_mul2_state = 18,
-                      state_type_mul3_state = 19,
-                      state_type_mul4_state = 20,
-                      state_type_mul5_state = 21,
-                      state_type_mul6_state = 22,
-                      state_type_mul7_state = 23,
-                      state_type_jmp_state = 24,
-                      state_type_jsr_state = 25,
-                      state_type_jsr1_state = 26,
-                      state_type_branch_state = 27,
-                      state_type_bsr_state = 28,
-                      state_type_bsr1_state = 29,
-                      state_type_rts_hi_state = 30,
-                      state_type_rts_lo_state = 31,
-                      state_type_int_pcl_state = 32,
-                      state_type_int_pch_state = 33,
-                      state_type_int_ixl_state = 34,
-                      state_type_int_ixh_state = 35,
-                      state_type_int_cc_state = 36,
-                      state_type_int_acca_state = 37,
-                      state_type_int_accb_state = 38,
-                      state_type_int_wai_state = 39,
-                      state_type_int_mask_state = 40,
-                      state_type_rti_state = 41,
-                      state_type_rti_cc_state = 42,
-                      state_type_rti_acca_state = 43,
-                      state_type_rti_accb_state = 44,
-                      state_type_rti_ixl_state = 45,
-                      state_type_rti_ixh_state = 46,
-                      state_type_rti_pcl_state = 47,
-                      state_type_rti_pch_state = 48,
-                      state_type_pula_state = 49,
-                      state_type_psha_state = 50,
-                      state_type_pulb_state = 51,
-                      state_type_pshb_state = 52,
-                      state_type_pulx_lo_state = 53,
-                      state_type_pulx_hi_state = 54,
-                      state_type_pshx_lo_state = 55,
-                      state_type_pshx_hi_state = 56,
-                      state_type_vect_lo_state = 57,
-                      state_type_vect_hi_state = 58;
-    parameter [2:0]   addr_type_idle_ad = 0,
-                      addr_type_fetch_ad = 1,
-                      addr_type_read_ad = 2,
-                      addr_type_write_ad = 3,
-                      addr_type_push_ad = 4,
-                      addr_type_pull_ad = 5,
-                      addr_type_int_hi_ad = 6,
-                      addr_type_int_lo_ad = 7;
-    parameter [3:0]   dout_type_md_lo_dout = 0,
-                      dout_type_md_hi_dout = 1,
-                      dout_type_acca_dout = 2,
-                      dout_type_accb_dout = 3,
-                      dout_type_ix_lo_dout = 4,
-                      dout_type_ix_hi_dout = 5,
-                      dout_type_cc_dout = 6,
-                      dout_type_pc_lo_dout = 7,
-                      dout_type_pc_hi_dout = 8;
-    parameter [1:0]   op_type_reset_op = 0,
-                      op_type_fetch_op = 1,
-                      op_type_latch_op = 2;
-    parameter [2:0]   acca_type_reset_acca = 0,
-                      acca_type_load_acca = 1,
-                      acca_type_load_hi_acca = 2,
-                      acca_type_pull_acca = 3,
-                      acca_type_latch_acca = 4;
-    parameter [1:0]   accb_type_reset_accb = 0,
-                      accb_type_load_accb = 1,
-                      accb_type_pull_accb = 2,
-                      accb_type_latch_accb = 3;
-    parameter [1:0]   cc_type_reset_cc = 0,
-                      cc_type_load_cc = 1,
-                      cc_type_pull_cc = 2,
-                      cc_type_latch_cc = 3;
-    parameter [2:0]   ix_type_reset_ix = 0,
-                      ix_type_load_ix = 1,
-                      ix_type_pull_lo_ix = 2,
-                      ix_type_pull_hi_ix = 3,
-                      ix_type_latch_ix = 4;
-    parameter [1:0]   sp_type_reset_sp = 0,
-                      sp_type_latch_sp = 1,
-                      sp_type_load_sp = 2;
-    parameter [2:0]   pc_type_reset_pc = 0,
-                      pc_type_latch_pc = 1,
-                      pc_type_load_ea_pc = 2,
-                      pc_type_add_ea_pc = 3,
-                      pc_type_pull_lo_pc = 4,
-                      pc_type_pull_hi_pc = 5,
-                      pc_type_inc_pc = 6;
-    parameter [2:0]   md_type_reset_md = 0,
-                      md_type_latch_md = 1,
-                      md_type_load_md = 2,
-                      md_type_fetch_first_md = 3,
-                      md_type_fetch_next_md = 4,
-                      md_type_shiftl_md = 5;
-    parameter [2:0]   ea_type_reset_ea = 0,
-                      ea_type_latch_ea = 1,
-                      ea_type_add_ix_ea = 2,
-                      ea_type_load_accb_ea = 3,
-                      ea_type_inc_ea = 4,
-                      ea_type_fetch_first_ea = 5,
-                      ea_type_fetch_next_ea = 6;
-    parameter [2:0]   iv_type_reset_iv = 0,
-                      iv_type_latch_iv = 1,
-                      iv_type_swi_iv = 2,
-                      iv_type_nmi_iv = 3,
-                      iv_type_irq_iv = 4;
-    parameter [1:0]   nmi_type_reset_nmi = 0,
-                      nmi_type_set_nmi = 1,
-                      nmi_type_latch_nmi = 2;
-    parameter [2:0]   left_type_acca_left = 0,
-                      left_type_accb_left = 1,
-                      left_type_accd_left = 2,
-                      left_type_md_left = 3,
-                      left_type_ix_left = 4,
-                      left_type_sp_left = 5;
-    parameter [1:0]   right_type_md_right = 0,
-                      right_type_zero_right = 1,
-                      right_type_plus_one_right = 2,
-                      right_type_accb_right = 3;
-    parameter [5:0]   alu_type_alu_add8 = 0,
-                      alu_type_alu_sub8 = 1,
-                      alu_type_alu_add16 = 2,
-                      alu_type_alu_sub16 = 3,
-                      alu_type_alu_adc = 4,
-                      alu_type_alu_sbc = 5,
-                      alu_type_alu_and = 6,
-                      alu_type_alu_ora = 7,
-                      alu_type_alu_eor = 8,
-                      alu_type_alu_tst = 9,
-                      alu_type_alu_inc = 10,
-                      alu_type_alu_dec = 11,
-                      alu_type_alu_clr = 12,
-                      alu_type_alu_neg = 13,
-                      alu_type_alu_com = 14,
-                      alu_type_alu_inx = 15,
-                      alu_type_alu_dex = 16,
-                      alu_type_alu_cpx = 17,
-                      alu_type_alu_lsr16 = 18,
-                      alu_type_alu_lsl16 = 19,
-                      alu_type_alu_ror8 = 20,
-                      alu_type_alu_rol8 = 21,
-                      alu_type_alu_asr8 = 22,
-                      alu_type_alu_asl8 = 23,
-                      alu_type_alu_lsr8 = 24,
-                      alu_type_alu_sei = 25,
-                      alu_type_alu_cli = 26,
-                      alu_type_alu_sec = 27,
-                      alu_type_alu_clc = 28,
-                      alu_type_alu_sev = 29,
-                      alu_type_alu_clv = 30,
-                      alu_type_alu_tpa = 31,
-                      alu_type_alu_tap = 32,
-                      alu_type_alu_ld8 = 33,
-                      alu_type_alu_st8 = 34,
-                      alu_type_alu_ld16 = 35,
-                      alu_type_alu_st16 = 36,
-                      alu_type_alu_nop = 37,
-                      alu_type_alu_daa = 38;
-    
-    reg [7:0]         op_code;
-    reg [7:0]         acca;
-    reg [7:0]         accb;
-    reg [7:0]         cc;
-    reg [7:0]         cc_out;
-    reg [15:0]        xreg;
-    reg [15:0]        sp;
-    reg [15:0]        ea;
-    reg [15:0]        pc;
-    reg [15:0]        md;
-    reg [15:0]        left;
-    reg [15:0]        right;
-    reg [15:0]        out_alu;
-    reg [1:0]         iv;
-    reg               nmi_req;
-    reg               nmi_ack;
-    
-    reg [5:0]         state;
-    reg [5:0]         next_state;
-    reg [2:0]         pc_ctrl;
-    reg [2:0]         ea_ctrl;
-    reg [1:0]         op_ctrl;
-    reg [2:0]         md_ctrl;
-    reg [2:0]         acca_ctrl;
-    reg [1:0]         accb_ctrl;
-    reg [2:0]         ix_ctrl;
-    reg [1:0]         cc_ctrl;
-    reg [1:0]         sp_ctrl;
-    reg [2:0]         iv_ctrl;
-    reg [2:0]         left_ctrl;
-    reg [1:0]         right_ctrl;
-    reg [5:0]         alu_ctrl;
-    reg [2:0]         addr_ctrl;
-    reg [3:0]         dout_ctrl;
-    reg [1:0]         nmi_ctrl;
-    
-    //--------------------------------
-    //
-    // Address bus multiplexer
-    //
-    //--------------------------------
-    
-    
-    always @(clk or addr_ctrl or pc or ea or sp or iv)
-    begin: addr_mux
+    output     [15:0] test_alu;
+    output     [7:0]  test_cc;
+    output     [15:0] dbg_pc;
+    output     [7:0]  dbg_opcode;
+    output     [15:0] dbg_addr;
+    output     [7:0]  dbg_din;
+    output            dbg_op_fetch;  // pulses high during the fetch cycle
+    output      [7:0] dbg_acca;
+    output      [7:0] dbg_accb;
+    output      [7:0] dbg_cc;
+
+    // CC bit positions
+    localparam SBIT = 7;
+    localparam XBIT = 6;
+    localparam HBIT = 5;
+    localparam IBIT = 4;
+    localparam NBIT = 3;
+    localparam ZBIT = 2;
+    localparam VBIT = 1;
+    localparam CBIT = 0;
+
+    // ===== State encoding =====
+    localparam [5:0]
+        ST_RESET    = 6'd0,
+        ST_FETCH    = 6'd1,
+        ST_DECODE   = 6'd2,
+        ST_EXTENDED = 6'd3,
+        ST_INDEXED  = 6'd4,
+        ST_READ8    = 6'd5,
+        ST_READ16   = 6'd6,
+        ST_IMM16    = 6'd7,
+        ST_WRITE8   = 6'd8,
+        ST_WRITE16  = 6'd9,
+        ST_EXECUTE  = 6'd10,
+        ST_HALT     = 6'd11,
+        ST_ERROR    = 6'd12,
+        ST_MUL      = 6'd13,
+        ST_MULEA    = 6'd14,
+        ST_MULD     = 6'd15,
+        ST_MUL0     = 6'd16,
+        ST_MUL1     = 6'd17,
+        ST_MUL2     = 6'd18,
+        ST_MUL3     = 6'd19,
+        ST_MUL4     = 6'd20,
+        ST_MUL5     = 6'd21,
+        ST_MUL6     = 6'd22,
+        ST_MUL7     = 6'd23,
+        ST_JMP      = 6'd24,
+        ST_JSR      = 6'd25,
+        ST_JSR1     = 6'd26,
+        ST_BRANCH   = 6'd27,
+        ST_BSR      = 6'd28,
+        ST_BSR1     = 6'd29,
+        ST_RTS_HI   = 6'd30,
+        ST_RTS_LO   = 6'd31,
+        ST_INT_PCL  = 6'd32,
+        ST_INT_PCH  = 6'd33,
+        ST_INT_IXL  = 6'd34,
+        ST_INT_IXH  = 6'd35,
+        ST_INT_CC   = 6'd36,
+        ST_INT_ACCA = 6'd37,
+        ST_INT_ACCB = 6'd38,
+        ST_INT_WAI  = 6'd39,
+        ST_INT_MASK = 6'd40,
+        ST_RTI      = 6'd41,
+        ST_RTI_CC   = 6'd42,
+        ST_RTI_ACCA = 6'd43,
+        ST_RTI_ACCB = 6'd44,
+        ST_RTI_IXL  = 6'd45,
+        ST_RTI_IXH  = 6'd46,
+        ST_RTI_PCL  = 6'd47,
+        ST_RTI_PCH  = 6'd48,
+        ST_PULA     = 6'd49,
+        ST_PSHA     = 6'd50,
+        ST_PULB     = 6'd51,
+        ST_PSHB     = 6'd52,
+        ST_PULX_LO  = 6'd53,
+        ST_PULX_HI  = 6'd54,
+        ST_PSHX_LO  = 6'd55,
+        ST_PSHX_HI  = 6'd56,
+        ST_VECT_LO  = 6'd57,
+        ST_VECT_HI  = 6'd58;
+
+    // ===== Mux control encodings =====
+    localparam [2:0]
+        AD_IDLE  = 3'd0, AD_FETCH = 3'd1, AD_READ  = 3'd2, AD_WRITE = 3'd3,
+        AD_PUSH  = 3'd4, AD_PULL  = 3'd5, AD_INTH  = 3'd6, AD_INTL  = 3'd7;
+
+    localparam [3:0]
+        DO_MD_LO = 4'd0, DO_MD_HI = 4'd1, DO_ACCA = 4'd2, DO_ACCB = 4'd3,
+        DO_IX_LO = 4'd4, DO_IX_HI = 4'd5, DO_CC   = 4'd6, DO_PC_LO = 4'd7, DO_PC_HI = 4'd8;
+
+    localparam [1:0] OP_RESET = 2'd0, OP_FETCH = 2'd1, OP_LATCH = 2'd2;
+
+    localparam [2:0]
+        ACCA_RESET = 3'd0, ACCA_LOAD = 3'd1, ACCA_LOAD_HI = 3'd2,
+        ACCA_PULL  = 3'd3, ACCA_LATCH = 3'd4;
+
+    localparam [1:0]
+        ACCB_RESET = 2'd0, ACCB_LOAD = 2'd1, ACCB_PULL = 2'd2, ACCB_LATCH = 2'd3;
+
+    localparam [1:0] CC_RESET = 2'd0, CC_LOAD = 2'd1, CC_PULL = 2'd2, CC_LATCH = 2'd3;
+
+    localparam [2:0]
+        IX_RESET = 3'd0, IX_LOAD = 3'd1, IX_PULL_LO = 3'd2,
+        IX_PULL_HI = 3'd3, IX_LATCH = 3'd4;
+
+    localparam [1:0] SP_RESET = 2'd0, SP_LATCH = 2'd1, SP_LOAD = 2'd2;
+
+    localparam [2:0]
+        PC_RESET = 3'd0, PC_LATCH = 3'd1, PC_LOAD_EA = 3'd2, PC_ADD_EA = 3'd3,
+        PC_PULL_LO = 3'd4, PC_PULL_HI = 3'd5, PC_INC = 3'd6;
+
+    localparam [2:0]
+        MD_RESET = 3'd0, MD_LATCH = 3'd1, MD_LOAD = 3'd2,
+        MD_FETCH_FIRST = 3'd3, MD_FETCH_NEXT = 3'd4, MD_SHIFTL = 3'd5;
+
+    localparam [2:0]
+        EA_RESET = 3'd0, EA_LATCH = 3'd1, EA_ADD_IX = 3'd2, EA_LOAD_ACCB = 3'd3,
+        EA_INC = 3'd4, EA_FETCH_FIRST = 3'd5, EA_FETCH_NEXT = 3'd6;
+
+    localparam [2:0]
+        IV_RESET = 3'd0, IV_LATCH = 3'd1, IV_SWI = 3'd2, IV_NMI = 3'd3, IV_IRQ = 3'd4;
+
+    localparam [1:0] NMI_RESET = 2'd0, NMI_SET = 2'd1, NMI_LATCH = 2'd2;
+
+    localparam [2:0]
+        LEFT_ACCA = 3'd0, LEFT_ACCB = 3'd1, LEFT_ACCD = 3'd2,
+        LEFT_MD = 3'd3, LEFT_IX = 3'd4, LEFT_SP = 3'd5;
+
+    localparam [1:0]
+        RIGHT_MD = 2'd0, RIGHT_ZERO = 2'd1, RIGHT_ONE = 2'd2, RIGHT_ACCB = 2'd3;
+
+    localparam [5:0]
+        ALU_ADD8 = 6'd0,  ALU_SUB8 = 6'd1,  ALU_ADD16 = 6'd2, ALU_SUB16 = 6'd3,
+        ALU_ADC  = 6'd4,  ALU_SBC  = 6'd5,
+        ALU_AND  = 6'd6,  ALU_ORA  = 6'd7,  ALU_EOR   = 6'd8,
+        ALU_TST  = 6'd9,  ALU_INC  = 6'd10, ALU_DEC   = 6'd11, ALU_CLR = 6'd12,
+        ALU_NEG  = 6'd13, ALU_COM  = 6'd14,
+        ALU_INX  = 6'd15, ALU_DEX  = 6'd16, ALU_CPX   = 6'd17,
+        ALU_LSR16 = 6'd18, ALU_LSL16 = 6'd19,
+        ALU_ROR8  = 6'd20, ALU_ROL8  = 6'd21,
+        ALU_ASR8  = 6'd22, ALU_ASL8  = 6'd23, ALU_LSR8 = 6'd24,
+        ALU_SEI = 6'd25, ALU_CLI = 6'd26, ALU_SEC = 6'd27, ALU_CLC = 6'd28,
+        ALU_SEV = 6'd29, ALU_CLV = 6'd30, ALU_TPA = 6'd31, ALU_TAP = 6'd32,
+        ALU_LD8 = 6'd33, ALU_ST8 = 6'd34, ALU_LD16 = 6'd35, ALU_ST16 = 6'd36,
+        ALU_NOP = 6'd37, ALU_DAA = 6'd38;
+
+    // ===== State and registers =====
+    reg  [7:0]  op_code;
+    reg  [7:0]  acca;
+    reg  [7:0]  accb;
+    reg  [7:0]  cc;
+    reg  [15:0] xreg;
+    reg  [15:0] sp;
+    reg  [15:0] ea;
+    reg  [15:0] pc;
+    reg  [15:0] md;
+    reg  [1:0]  iv;
+    reg         nmi_req;
+    reg         nmi_ack;
+    reg  [5:0]  state;
+
+    // Combinational sequencer outputs
+    reg  [5:0]  next_state;
+    reg  [2:0]  pc_ctrl;
+    reg  [2:0]  ea_ctrl;
+    reg  [1:0]  op_ctrl;
+    reg  [2:0]  md_ctrl;
+    reg  [2:0]  acca_ctrl;
+    reg  [1:0]  accb_ctrl;
+    reg  [2:0]  ix_ctrl;
+    reg  [1:0]  cc_ctrl;
+    reg  [1:0]  sp_ctrl;
+    reg  [2:0]  iv_ctrl;
+    reg  [2:0]  left_ctrl;
+    reg  [1:0]  right_ctrl;
+    reg  [5:0]  alu_ctrl;
+    reg  [2:0]  addr_ctrl;
+    reg  [3:0]  dout_ctrl;
+    reg  [1:0]  nmi_ctrl;
+
+    // ALU
+    reg  [15:0] left;
+    reg  [15:0] right;
+    reg  [15:0] out_alu;
+    reg  [7:0]  cc_out;
+
+    assign test_alu   = out_alu;
+    assign test_cc    = cc_out;
+    assign dbg_pc     = pc;
+    assign dbg_opcode = op_code;
+    assign dbg_addr   = address;
+    assign dbg_din    = data_in;
+    assign dbg_op_fetch = (op_ctrl == OP_FETCH);
+    assign dbg_acca     = acca;
+    assign dbg_accb     = accb;
+    assign dbg_cc       = cc;
+
+    // ----------------------------------
+    // Address bus mux
+    // ----------------------------------
+    always @* begin
         case (addr_ctrl)
-            addr_type_idle_ad :
-                begin
-                    address <= 16'b1111111111111111;
-                    vma <= 1'b0;
-                    rw <= 1'b1;
-                end
-            addr_type_fetch_ad :
-                begin
-                    address <= pc;
-                    vma <= 1'b1;
-                    rw <= 1'b1;
-                end
-            addr_type_read_ad :
-                begin
-                    address <= ea;
-                    vma <= 1'b1;
-                    rw <= 1'b1;
-                end
-            addr_type_write_ad :
-                begin
-                    address <= ea;
-                    vma <= 1'b1;
-                    rw <= 1'b0;
-                end
-            addr_type_push_ad :
-                begin
-                    address <= sp;
-                    vma <= 1'b1;
-                    rw <= 1'b0;
-                end
-            addr_type_pull_ad :
-                begin
-                    address <= sp;
-                    vma <= 1'b1;
-                    rw <= 1'b1;
-                end
-            addr_type_int_hi_ad :
-                begin
-                    address <= {13'b1111111111111, iv, 1'b0};
-                    vma <= 1'b1;
-                    rw <= 1'b1;
-                end
-            addr_type_int_lo_ad :
-                begin
-                    address <= {13'b1111111111111, iv, 1'b1};
-                    vma <= 1'b1;
-                    rw <= 1'b1;
-                end
-            default :
-                begin
-                    address <= 16'b1111111111111111;
-                    vma <= 1'b0;
-                    rw <= 1'b1;
-                end
+            AD_IDLE:  begin address = 16'hFFFF;             vma = 1'b0; rw = 1'b1; end
+            AD_FETCH: begin address = pc;                   vma = 1'b1; rw = 1'b1; end
+            AD_READ:  begin address = ea;                   vma = 1'b1; rw = 1'b1; end
+            AD_WRITE: begin address = ea;                   vma = 1'b1; rw = 1'b0; end
+            AD_PUSH:  begin address = sp;                   vma = 1'b1; rw = 1'b0; end
+            AD_PULL:  begin address = sp;                   vma = 1'b1; rw = 1'b1; end
+            AD_INTH:  begin address = {13'b1111111111111, iv, 1'b0}; vma = 1'b1; rw = 1'b1; end
+            AD_INTL:  begin address = {13'b1111111111111, iv, 1'b1}; vma = 1'b1; rw = 1'b1; end
+            default:  begin address = 16'hFFFF;             vma = 1'b0; rw = 1'b1; end
         endcase
     end
-    
-    //------------------------------
-    //
-    // Data Bus output
-    //
-    //------------------------------
-    
-    always @(clk or dout_ctrl or md or acca or accb or xreg or pc or cc)
-    begin: dout_mux
+
+    // ----------------------------------
+    // Data out mux
+    // ----------------------------------
+    always @* begin
         case (dout_ctrl)
-            dout_type_md_hi_dout :		// alu output
-                data_out <= md[15:8];
-            dout_type_md_lo_dout :
-                data_out <= md[7:0];
-            dout_type_acca_dout :		// accumulator a
-                data_out <= acca;
-            dout_type_accb_dout :		// accumulator b
-                data_out <= accb;
-            dout_type_ix_lo_dout :		// index reg
-                data_out <= xreg[7:0];
-            dout_type_ix_hi_dout :		// index reg
-                data_out <= xreg[15:8];
-            dout_type_cc_dout :		// condition codes
-                data_out <= cc;
-            dout_type_pc_lo_dout :		// low order pc
-                data_out <= pc[7:0];
-            dout_type_pc_hi_dout :		// high order pc
-                data_out <= pc[15:8];
-            default :
-                data_out <= 8'b00000000;
+            DO_MD_HI: data_out = md[15:8];
+            DO_MD_LO: data_out = md[7:0];
+            DO_ACCA:  data_out = acca;
+            DO_ACCB:  data_out = accb;
+            DO_IX_LO: data_out = xreg[7:0];
+            DO_IX_HI: data_out = xreg[15:8];
+            DO_CC:    data_out = cc;
+            DO_PC_LO: data_out = pc[7:0];
+            DO_PC_HI: data_out = pc[15:8];
+            default:  data_out = 8'h00;
         endcase
     end
-    
-    //--------------------------------
-    //
-    // Program Counter Control
-    //
-    //--------------------------------
-    
-    
-    always @(negedge clk or pc_ctrl or pc or out_alu or data_in or ea or hold)
-    begin: pc_mux
-        reg [15:0]        tempof;
-        reg [15:0]        temppc;
+
+    // ----------------------------------
+    // PC update
+    // ----------------------------------
+    reg [15:0] pc_off;
+    reg [15:0] pc_base;
+    always @* begin
         case (pc_ctrl)
-            pc_type_add_ea_pc :
-                if (ea[7] == 1'b0)
-                    tempof = {8'b00000000, ea[7:0]};
-                else
-                    tempof = {8'b11111111, ea[7:0]};
-            pc_type_inc_pc :
-                tempof = 16'b0000000000000001;
-            default :
-                tempof = 16'b0000000000000000;
+            PC_ADD_EA: pc_off = {{8{ea[7]}}, ea[7:0]};
+            PC_INC:    pc_off = 16'h0001;
+            default:   pc_off = 16'h0000;
         endcase
-        
         case (pc_ctrl)
-            pc_type_reset_pc :
-                temppc = 16'b1111111111111110;
-            pc_type_load_ea_pc :
-                temppc = ea;
-            pc_type_pull_lo_pc :
-                begin
-                    temppc[7:0] = data_in;
-                    temppc[15:8] = pc[15:8];
-                end
-            pc_type_pull_hi_pc :
-                begin
-                    temppc[7:0] = pc[7:0];
-                    temppc[15:8] = data_in;
-                end
-            default :
-                temppc = pc;
+            PC_RESET:   pc_base = 16'hFFFE;
+            PC_LOAD_EA: pc_base = ea;
+            PC_PULL_LO: pc_base = {pc[15:8], data_in};
+            PC_PULL_HI: pc_base = {data_in,  pc[7:0]};
+            default:    pc_base = pc;
         endcase
-        
-        
-        begin
-            if (hold == 1'b1)
-                pc <= pc;
-            else
-                pc <= temppc + tempof;
-        end
     end
-    
-    //--------------------------------
-    //
-    // Effective Address  Control
-    //
-    //--------------------------------
-    
-    
-    always @(negedge clk or ea_ctrl or ea or out_alu or data_in or accb or xreg or hold)
-    begin: ea_mux
-        reg [15:0]        tempind;
-        reg [15:0]        tempea;
+    always @(negedge clk) begin
+        if (~hold) pc <= pc_base + pc_off;
+    end
+
+    // ----------------------------------
+    // EA update
+    // ----------------------------------
+    reg [15:0] ea_off;
+    reg [15:0] ea_base;
+    always @* begin
         case (ea_ctrl)
-            ea_type_add_ix_ea :
-                tempind = {8'b00000000, ea[7:0]};
-            ea_type_inc_ea :
-                tempind = 16'b0000000000000001;
-            default :
-                tempind = 16'b0000000000000000;
+            EA_ADD_IX: ea_off = {8'h00, ea[7:0]};
+            EA_INC:    ea_off = 16'h0001;
+            default:   ea_off = 16'h0000;
         endcase
-        
         case (ea_ctrl)
-            ea_type_reset_ea :
-                tempea = 16'b0000000000000000;
-            ea_type_load_accb_ea :
-                tempea = {8'b00000000, accb[7:0]};
-            ea_type_add_ix_ea :
-                tempea = xreg;
-            ea_type_fetch_first_ea :
-                begin
-                    tempea[7:0] = data_in;
-                    tempea[15:8] = 8'b00000000;
-                end
-            ea_type_fetch_next_ea :
-                begin
-                    tempea[7:0] = data_in;
-                    tempea[15:8] = ea[7:0];
-                end
-            default :
-                tempea = ea;
+            EA_RESET:       ea_base = 16'h0000;
+            EA_LOAD_ACCB:   ea_base = {8'h00, accb};
+            EA_ADD_IX:      ea_base = xreg;
+            EA_FETCH_FIRST: ea_base = {8'h00, data_in};
+            EA_FETCH_NEXT:  ea_base = {ea[7:0], data_in};
+            default:        ea_base = ea;
         endcase
-        
-        
-        begin
-            if (hold == 1'b1)
-                ea <= ea;
-            else
-                ea <= tempea + tempind;
+    end
+    always @(negedge clk) begin
+        if (~hold) ea <= ea_base + ea_off;
+    end
+
+    // ----------------------------------
+    // ACCA
+    // ----------------------------------
+    always @(negedge clk) begin
+        if (~hold) begin
+            case (acca_ctrl)
+                ACCA_RESET:   acca <= 8'h00;
+                ACCA_LOAD:    acca <= out_alu[7:0];
+                ACCA_LOAD_HI: acca <= out_alu[15:8];
+                ACCA_PULL:    acca <= data_in;
+                default:      acca <= acca;
+            endcase
         end
     end
-    
-    //------------------------------
-    //
-    // Accumulator A
-    //
-    //------------------------------
-    
-    always @(negedge clk or acca_ctrl or out_alu or acca or data_in or hold)
-    begin: acca_mux
-        
-        begin
-            if (hold == 1'b1)
-                acca <= acca;
-            else
-                case (acca_ctrl)
-                    acca_type_reset_acca :
-                        acca <= 8'b00000000;
-                    acca_type_load_acca :
-                        acca <= out_alu[7:0];
-                    acca_type_load_hi_acca :
-                        acca <= out_alu[15:8];
-                    acca_type_pull_acca :
-                        acca <= data_in;
-                    default :
-                        //	 when latch_acca =>
-                        acca <= acca;
-                endcase
+
+    // ----------------------------------
+    // ACCB
+    // ----------------------------------
+    always @(negedge clk) begin
+        if (~hold) begin
+            case (accb_ctrl)
+                ACCB_RESET: accb <= 8'h00;
+                ACCB_LOAD:  accb <= out_alu[7:0];
+                ACCB_PULL:  accb <= data_in;
+                default:    accb <= accb;
+            endcase
         end
     end
-    
-    //------------------------------
-    //
-    // Accumulator B
-    //
-    //------------------------------
-    
-    always @(negedge clk or accb_ctrl or out_alu or accb or data_in or hold)
-    begin: accb_mux
-        
-        begin
-            if (hold == 1'b1)
-                accb <= accb;
-            else
-                case (accb_ctrl)
-                    accb_type_reset_accb :
-                        accb <= 8'b00000000;
-                    accb_type_load_accb :
-                        accb <= out_alu[7:0];
-                    accb_type_pull_accb :
-                        accb <= data_in;
-                    default :
-                        //	 when latch_accb =>
-                        accb <= accb;
-                endcase
+
+    // ----------------------------------
+    // X index
+    // ----------------------------------
+    always @(negedge clk) begin
+        if (~hold) begin
+            case (ix_ctrl)
+                IX_RESET:   xreg <= 16'h0000;
+                IX_LOAD:    xreg <= out_alu;
+                IX_PULL_HI: xreg[15:8] <= data_in;
+                IX_PULL_LO: xreg[7:0]  <= data_in;
+                default:    xreg <= xreg;
+            endcase
         end
     end
-    
-    //------------------------------
-    //
-    // X Index register
-    //
-    //------------------------------
-    
-    always @(negedge clk or ix_ctrl or out_alu or xreg or data_in or hold)
-    begin: ix_mux
-        
-        begin
-            if (hold == 1'b1)
-                xreg <= xreg;
-            else
-                case (ix_ctrl)
-                    ix_type_reset_ix :
-                        xreg <= 16'b0000000000000000;
-                    ix_type_load_ix :
-                        xreg <= out_alu[15:0];
-                    ix_type_pull_hi_ix :
-                        xreg[15:8] <= data_in;
-                    ix_type_pull_lo_ix :
-                        xreg[7:0] <= data_in;
-                    default :
-                        //	 when latch_ix =>
-                        xreg <= xreg;
-                endcase
+
+    // ----------------------------------
+    // SP
+    // ----------------------------------
+    always @(negedge clk) begin
+        if (~hold) begin
+            case (sp_ctrl)
+                SP_RESET: sp <= 16'h0000;
+                SP_LOAD:  sp <= out_alu;
+                default:  sp <= sp;
+            endcase
         end
     end
-    
-    //------------------------------
-    //
-    // stack pointer
-    //
-    //------------------------------
-    
-    always @(negedge clk or sp_ctrl or out_alu or hold)
-    begin: sp_mux
-        
-        begin
-            if (hold == 1'b1)
-                sp <= sp;
-            else
-                case (sp_ctrl)
-                    sp_type_reset_sp :
-                        sp <= 16'b0000000000000000;
-                    sp_type_load_sp :
-                        sp <= out_alu[15:0];
-                    default :
-                        //	 when latch_sp =>
-                        sp <= sp;
-                endcase
+
+    // ----------------------------------
+    // MD
+    // ----------------------------------
+    always @(negedge clk) begin
+        if (~hold) begin
+            case (md_ctrl)
+                MD_RESET:       md <= 16'h0000;
+                MD_LOAD:        md <= out_alu;
+                MD_FETCH_FIRST: md <= {8'h00, data_in};
+                MD_FETCH_NEXT:  md <= {md[7:0], data_in};
+                MD_SHIFTL:      md <= {md[14:0], 1'b0};
+                default:        md <= md;
+            endcase
         end
     end
-    
-    //------------------------------
-    //
-    // Memory Data
-    //
-    //------------------------------
-    
-    always @(negedge clk or md_ctrl or out_alu or data_in or md or hold)
-    begin: md_mux
-        
-        begin
-            if (hold == 1'b1)
-                md <= md;
-            else
-                case (md_ctrl)
-                    md_type_reset_md :
-                        md <= 16'b0000000000000000;
-                    md_type_load_md :
-                        md <= out_alu[15:0];
-                    md_type_fetch_first_md :
-                        begin
-                            md[15:8] <= 8'b00000000;
-                            md[7:0] <= data_in;
-                        end
-                    md_type_fetch_next_md :
-                        begin
-                            md[15:8] <= md[7:0];
-                            md[7:0] <= data_in;
-                        end
-                    md_type_shiftl_md :
-                        begin
-                            md[15:1] <= md[14:0];
-                            md[0] <= 1'b0;
-                        end
-                    default :
-                        //	 when latch_md =>
-                        md <= md;
-                endcase
+
+    // ----------------------------------
+    // CC
+    // ----------------------------------
+    always @(negedge clk) begin
+        if (~hold) begin
+            case (cc_ctrl)
+                CC_RESET: cc <= 8'b11010000;  // I bit set: mask IRQs at reset (matches MC6800)
+                CC_LOAD:  cc <= cc_out;
+                CC_PULL:  cc <= data_in;
+                default:  cc <= cc;
+            endcase
         end
     end
-    
-    //--------------------------------
-    //
-    // Condition Codes
-    //
-    //--------------------------------
-    
-    
-    always @(negedge clk or cc_ctrl or cc_out or cc or data_in or hold)
-    begin: cc_mux
-        
-        begin
-            if (hold == 1'b1)
-                cc <= cc;
-            else
-                case (cc_ctrl)
-                    cc_type_reset_cc :
-                        cc <= 8'b11000000;
-                    cc_type_load_cc :
-                        cc <= cc_out;
-                    cc_type_pull_cc :
-                        cc <= data_in;
-                    default :
-                        //  when latch_cc =>
-                        cc <= cc;
-                endcase
+
+    // ----------------------------------
+    // IV
+    // ----------------------------------
+    always @(negedge clk) begin
+        if (~hold) begin
+            case (iv_ctrl)
+                IV_RESET: iv <= 2'b11;
+                IV_NMI:   iv <= 2'b10;
+                IV_SWI:   iv <= 2'b01;
+                IV_IRQ:   iv <= 2'b00;
+                default:  iv <= iv;
+            endcase
         end
     end
-    
-    //--------------------------------
-    //
-    // interrupt vector
-    //
-    //--------------------------------
-    
-    
-    always @(negedge clk or iv_ctrl or hold)
-    begin: iv_mux
-        
-        begin
-            if (hold == 1'b1)
-                iv <= iv;
-            else
-                case (iv_ctrl)
-                    iv_type_reset_iv :
-                        iv <= 2'b11;
-                    iv_type_nmi_iv :
-                        iv <= 2'b10;
-                    iv_type_swi_iv :
-                        iv <= 2'b01;
-                    iv_type_irq_iv :
-                        iv <= 2'b00;
-                    default :
-                        iv <= iv;
-                endcase
+
+    // ----------------------------------
+    // op fetch
+    // ----------------------------------
+    always @(negedge clk) begin
+        if (~hold) begin
+            case (op_ctrl)
+                OP_RESET: op_code <= 8'b00000001;
+                OP_FETCH: op_code <= data_in;
+                default:  op_code <= op_code;
+            endcase
         end
     end
-    
-    //--------------------------------
-    //
-    // op code fetch
-    //
-    //--------------------------------
-    
-    
-    always @(negedge clk or data_in or op_ctrl or op_code or hold)
-    begin: op_fetch
-        
-        begin
-            if (hold == 1'b1)
-                op_code <= op_code;
-            else
-                case (op_ctrl)
-                    op_type_reset_op :
-                        op_code <= 8'b00000001;		// nop
-                    op_type_fetch_op :
-                        op_code <= data_in;
-                    default :
-                        //	 when latch_op =>
-                        op_code <= op_code;
-                endcase
-        end
-    end
-    
-    //--------------------------------
-    //
-    // Left Mux
-    //
-    //--------------------------------
-    
-    
-    always @(left_ctrl or acca or accb or xreg or sp or pc or ea or md)
-    begin: left_mux
+
+    // ----------------------------------
+    // Left mux
+    // ----------------------------------
+    always @* begin
         case (left_ctrl)
-            left_type_acca_left :
-                begin
-                    left[15:8] <= 8'b00000000;
-                    left[7:0] <= acca;
-                end
-            left_type_accb_left :
-                begin
-                    left[15:8] <= 8'b00000000;
-                    left[7:0] <= accb;
-                end
-            left_type_accd_left :
-                begin
-                    left[15:8] <= acca;
-                    left[7:0] <= accb;
-                end
-            left_type_ix_left :
-                left <= xreg;
-            left_type_sp_left :
-                left <= sp;
-            default :
-                //	 when md_left =>
-                left <= md;
+            LEFT_ACCA: left = {8'h00, acca};
+            LEFT_ACCB: left = {8'h00, accb};
+            LEFT_ACCD: left = {acca, accb};
+            LEFT_IX:   left = xreg;
+            LEFT_SP:   left = sp;
+            default:   left = md;
         endcase
     end
-    //--------------------------------
-    //
-    // Right Mux
-    //
-    //--------------------------------
-    
-    
-    always @(right_ctrl or data_in or md or accb or ea)
-    begin: right_mux
+
+    // ----------------------------------
+    // Right mux
+    // ----------------------------------
+    always @* begin
         case (right_ctrl)
-            right_type_zero_right :
-                right <= 16'b0000000000000000;
-            right_type_plus_one_right :
-                right <= 16'b0000000000000001;
-            right_type_accb_right :
-                right <= {8'b00000000, accb};
-            default :
-                //	 when md_right =>
-                right <= md;
+            RIGHT_ZERO: right = 16'h0000;
+            RIGHT_ONE:  right = 16'h0001;
+            RIGHT_ACCB: right = {8'h00, accb};
+            default:    right = md;
         endcase
     end
-    
-    //--------------------------------
-    //
-    // Arithmetic Logic Unit
-    //
-    //--------------------------------
-    
-    
-    always @(alu_ctrl or cc or left or right or out_alu or cc_out)
-    begin: mux_alu
-        reg               valid_lo;
-        reg               valid_hi;
-        reg               carry_in;
-        reg [7:0]         daa_reg;
-        
+
+    // ----------------------------------
+    // ALU
+    // ----------------------------------
+    reg        carry_in;
+    reg [7:0]  daa_reg;
+    reg        valid_lo, valid_hi;
+    always @* begin
         case (alu_ctrl)
-            alu_type_alu_adc, alu_type_alu_sbc, alu_type_alu_rol8, alu_type_alu_ror8 :
-                carry_in = cc[CBIT];
-            default :
-                carry_in = 1'b0;
+            ALU_ADC, ALU_SBC, ALU_ROL8, ALU_ROR8: carry_in = cc[CBIT];
+            default: carry_in = 1'b0;
         endcase
-        
-        valid_lo = left[3:0] <= 9;
-        valid_hi = left[7:4] <= 9;
-        
-        if (cc[CBIT] == 1'b0)
-        begin
+
+        valid_lo = (left[3:0] <= 4'd9);
+        valid_hi = (left[7:4] <= 4'd9);
+
+        // DAA correction
+        if (cc[CBIT] == 1'b0) begin
             if (cc[HBIT] == 1'b1)
-            begin
-                if (valid_hi)
-                    daa_reg = 8'b00000110;
-                else
-                    daa_reg = 8'b01100110;
+                daa_reg = valid_hi ? 8'h06 : 8'h66;
+            else if (valid_lo)
+                daa_reg = valid_hi ? 8'h00 : 8'h60;
+            else
+                daa_reg = (left[7:4] <= 4'd8) ? 8'h06 : 8'h66;
+        end else begin
+            if (cc[HBIT] == 1'b1)
+                daa_reg = 8'h66;
+            else
+                daa_reg = valid_lo ? 8'h60 : 8'h66;
+        end
+
+        // Main ALU
+        case (alu_ctrl)
+            ALU_ADD8, ALU_INC, ALU_ADD16, ALU_INX, ALU_ADC:
+                out_alu = left + right + {15'h0000, carry_in};
+            ALU_SUB8, ALU_DEC, ALU_SUB16, ALU_DEX, ALU_SBC, ALU_CPX:
+                out_alu = left - right - {15'h0000, carry_in};
+            ALU_AND:  out_alu = left & right;
+            ALU_ORA:  out_alu = left | right;
+            ALU_EOR:  out_alu = left ^ right;
+            ALU_LSL16, ALU_ASL8, ALU_ROL8: out_alu = {left[14:0], carry_in};
+            ALU_LSR16, ALU_LSR8:           out_alu = {carry_in, left[15:1]};
+            ALU_ROR8: out_alu = {8'h00, carry_in, left[7:1]};
+            ALU_ASR8: out_alu = {8'h00, left[7], left[7:1]};
+            ALU_NEG:  out_alu = right - left;
+            ALU_COM:  out_alu = ~left;
+            ALU_CLR, ALU_LD8, ALU_LD16: out_alu = right;
+            ALU_ST8, ALU_ST16:          out_alu = left;
+            ALU_DAA:  out_alu = left + {8'h00, daa_reg};
+            ALU_TPA:  out_alu = {8'h00, cc};
+            default:  out_alu = left;
+        endcase
+
+        // Carry
+        case (alu_ctrl)
+            ALU_ADD8, ALU_ADC:
+                cc_out[CBIT] = (left[7] & right[7]) | (left[7] & ~out_alu[7]) | (right[7] & ~out_alu[7]);
+            ALU_SUB8, ALU_SBC:
+                cc_out[CBIT] = (~left[7] & right[7]) | (~left[7] & out_alu[7]) | (right[7] & out_alu[7]);
+            ALU_ADD16:
+                cc_out[CBIT] = (left[15] & right[15]) | (left[15] & ~out_alu[15]) | (right[15] & ~out_alu[15]);
+            ALU_SUB16:
+                cc_out[CBIT] = (~left[15] & right[15]) | (~left[15] & out_alu[15]) | (right[15] & out_alu[15]);
+            ALU_ROR8, ALU_LSR16, ALU_LSR8, ALU_ASR8: cc_out[CBIT] = left[0];
+            ALU_ROL8, ALU_ASL8: cc_out[CBIT] = left[7];
+            ALU_LSL16: cc_out[CBIT] = left[15];
+            ALU_COM:   cc_out[CBIT] = 1'b1;
+            ALU_NEG, ALU_CLR: cc_out[CBIT] = |out_alu[7:0];
+            ALU_DAA:   cc_out[CBIT] = (daa_reg[7:4] == 4'b0110);
+            ALU_SEC:   cc_out[CBIT] = 1'b1;
+            ALU_CLC:   cc_out[CBIT] = 1'b0;
+            ALU_TAP:   cc_out[CBIT] = left[CBIT];
+            default:   cc_out[CBIT] = cc[CBIT];
+        endcase
+
+        // Zero
+        case (alu_ctrl)
+            ALU_ADD8, ALU_SUB8, ALU_ADC, ALU_SBC,
+            ALU_AND, ALU_ORA, ALU_EOR,
+            ALU_INC, ALU_DEC, ALU_NEG, ALU_COM, ALU_CLR,
+            ALU_ROL8, ALU_ROR8, ALU_ASR8, ALU_ASL8, ALU_LSR8,
+            ALU_LD8, ALU_ST8:
+                cc_out[ZBIT] = ~|out_alu[7:0];
+            ALU_ADD16, ALU_SUB16, ALU_LSL16, ALU_LSR16,
+            ALU_INX, ALU_DEX, ALU_LD16, ALU_ST16, ALU_CPX:
+                cc_out[ZBIT] = ~|out_alu;
+            ALU_TAP: cc_out[ZBIT] = left[ZBIT];
+            default: cc_out[ZBIT] = cc[ZBIT];
+        endcase
+
+        // Negative
+        case (alu_ctrl)
+            ALU_ADD8, ALU_SUB8, ALU_ADC, ALU_SBC,
+            ALU_AND, ALU_ORA, ALU_EOR,
+            ALU_ROL8, ALU_ROR8, ALU_ASR8, ALU_ASL8, ALU_LSR8,
+            ALU_INC, ALU_DEC, ALU_NEG, ALU_COM, ALU_CLR,
+            ALU_LD8, ALU_ST8:
+                cc_out[NBIT] = out_alu[7];
+            ALU_ADD16, ALU_SUB16, ALU_LSL16, ALU_LSR16,
+            ALU_LD16, ALU_ST16, ALU_CPX:
+                cc_out[NBIT] = out_alu[15];
+            ALU_TAP: cc_out[NBIT] = left[NBIT];
+            default: cc_out[NBIT] = cc[NBIT];
+        endcase
+
+        // I bit
+        case (alu_ctrl)
+            ALU_SEI: cc_out[IBIT] = 1'b1;
+            ALU_CLI: cc_out[IBIT] = 1'b0;
+            ALU_TAP: cc_out[IBIT] = left[IBIT];
+            default: cc_out[IBIT] = cc[IBIT];
+        endcase
+
+        // H bit
+        case (alu_ctrl)
+            ALU_ADD8, ALU_ADC:
+                cc_out[HBIT] = (left[3] & right[3]) | (right[3] & ~out_alu[3]) | (left[3] & ~out_alu[3]);
+            ALU_TAP: cc_out[HBIT] = left[HBIT];
+            default: cc_out[HBIT] = cc[HBIT];
+        endcase
+
+        // V bit
+        case (alu_ctrl)
+            ALU_ADD8, ALU_ADC:
+                cc_out[VBIT] = ( left[7] &  right[7] & ~out_alu[7]) |
+                               (~left[7] & ~right[7] &  out_alu[7]);
+            ALU_SUB8, ALU_SBC:
+                cc_out[VBIT] = ( left[7] & ~right[7] & ~out_alu[7]) |
+                               (~left[7] &  right[7] &  out_alu[7]);
+            ALU_ADD16:
+                cc_out[VBIT] = ( left[15] &  right[15] & ~out_alu[15]) |
+                               (~left[15] & ~right[15] &  out_alu[15]);
+            ALU_SUB16, ALU_CPX:
+                cc_out[VBIT] = ( left[15] & ~right[15] & ~out_alu[15]) |
+                               (~left[15] &  right[15] &  out_alu[15]);
+            ALU_INC:
+                cc_out[VBIT] = (~left[7] & left[6] & left[5] & left[4] &
+                                 left[3] & left[2] & left[1] & left[0]);
+            ALU_DEC, ALU_NEG:
+                cc_out[VBIT] = ( left[7] & ~left[6] & ~left[5] & ~left[4] &
+                                ~left[3] & ~left[2] & ~left[1] & ~left[0]);
+            ALU_ASR8:  cc_out[VBIT] = left[0] ^ left[7];
+            ALU_LSR8, ALU_LSR16: cc_out[VBIT] = left[0];
+            ALU_ROR8:  cc_out[VBIT] = left[0] ^ cc[CBIT];
+            ALU_LSL16: cc_out[VBIT] = left[15] ^ left[14];
+            ALU_ROL8, ALU_ASL8: cc_out[VBIT] = left[7] ^ left[6];
+            ALU_TAP:   cc_out[VBIT] = left[VBIT];
+            ALU_AND, ALU_ORA, ALU_EOR, ALU_COM,
+            ALU_ST8, ALU_ST16, ALU_LD8, ALU_LD16, ALU_CLV:
+                       cc_out[VBIT] = 1'b0;
+            ALU_SEV:   cc_out[VBIT] = 1'b1;
+            default:   cc_out[VBIT] = cc[VBIT];
+        endcase
+
+        // X and S
+        case (alu_ctrl)
+            ALU_TAP: begin
+                cc_out[XBIT] = cc[XBIT] & left[XBIT];
+                cc_out[SBIT] = left[SBIT];
             end
-            else
-                if (valid_lo)
-                begin
-                    if (valid_hi)
-                        daa_reg = 8'b00000000;
-                    else
-                        daa_reg = 8'b01100000;
-                end
-                else
-                    if (left[7:4] <= 8)
-                        daa_reg = 8'b00000110;
-                    else
-                        daa_reg = 8'b01100110;
-        end
-        else
-            if (cc[HBIT] == 1'b1)
-                daa_reg = 8'b01100110;
-            else
-                if (valid_lo)
-                    daa_reg = 8'b01100000;
-                else
-                    daa_reg = 8'b01100110;
-        
-        case (alu_ctrl)
-            alu_type_alu_add8, alu_type_alu_inc, alu_type_alu_add16, alu_type_alu_inx, alu_type_alu_adc :
-                out_alu <= left + right + ({15'b000000000000000, carry_in});
-            alu_type_alu_sub8, alu_type_alu_dec, alu_type_alu_sub16, alu_type_alu_dex, alu_type_alu_sbc, alu_type_alu_cpx :
-                out_alu <= left - right - ({15'b000000000000000, carry_in});
-            alu_type_alu_and :
-                out_alu <= left & right;		// and/bit
-            alu_type_alu_ora :
-                out_alu <= left | right;		// or
-            alu_type_alu_eor :
-                out_alu <= left ^ right;		// eor/xor
-            alu_type_alu_lsl16, alu_type_alu_asl8, alu_type_alu_rol8 :
-                out_alu <= {left[14:0], carry_in};		// rol8/asl8/lsl16
-            alu_type_alu_lsr16, alu_type_alu_lsr8 :
-                out_alu <= {carry_in, left[15:1]};		// lsr
-            alu_type_alu_ror8 :
-                out_alu <= {8'b00000000, carry_in, left[7:1]};		// ror
-            alu_type_alu_asr8 :
-                out_alu <= {8'b00000000, left[7], left[7:1]};		// asr
-            alu_type_alu_neg :
-                out_alu <= right - left;		// neg (right=0)
-            alu_type_alu_com :
-                out_alu <= (~left);
-            alu_type_alu_clr, alu_type_alu_ld8, alu_type_alu_ld16 :
-                out_alu <= right;		// clr, ld
-            alu_type_alu_st8, alu_type_alu_st16 :
-                out_alu <= left;
-            alu_type_alu_daa :
-                out_alu <= left + ({8'b00000000, daa_reg});
-            alu_type_alu_tpa :
-                out_alu <= {8'b00000000, cc};
-            default :
-                out_alu <= left;		// nop
+            default: begin
+                cc_out[XBIT] = cc[XBIT] & left[XBIT];
+                cc_out[SBIT] = cc[SBIT];
+            end
         endcase
-        
-        //
-        // carry bit
-        //
-        case (alu_ctrl)
-            alu_type_alu_add8, alu_type_alu_adc :
-                cc_out[CBIT] <= (left[7] & right[7]) | (left[7] & (~out_alu[7])) | (right[7] & (~out_alu[7]));
-            alu_type_alu_sub8, alu_type_alu_sbc :
-                cc_out[CBIT] <= (((~left[7])) & right[7]) | (((~left[7])) & out_alu[7]) | (right[7] & out_alu[7]);
-            alu_type_alu_add16 :
-                cc_out[CBIT] <= (left[15] & right[15]) | (left[15] & (~out_alu[15])) | (right[15] & (~out_alu[15]));
-            alu_type_alu_sub16 :
-                cc_out[CBIT] <= (((~left[15])) & right[15]) | (((~left[15])) & out_alu[15]) | (right[15] & out_alu[15]);
-            alu_type_alu_ror8, alu_type_alu_lsr16, alu_type_alu_lsr8, alu_type_alu_asr8 :
-                cc_out[CBIT] <= left[0];
-            alu_type_alu_rol8, alu_type_alu_asl8 :
-                cc_out[CBIT] <= left[7];
-            alu_type_alu_lsl16 :
-                cc_out[CBIT] <= left[15];
-            alu_type_alu_com :
-                cc_out[CBIT] <= 1'b1;
-            alu_type_alu_neg, alu_type_alu_clr :
-                cc_out[CBIT] <= out_alu[7] | out_alu[6] | out_alu[5] | out_alu[4] | out_alu[3] | out_alu[2] | out_alu[1] | out_alu[0];
-            alu_type_alu_daa :
-                if (daa_reg[7:4] == 4'b0110)
-                    cc_out[CBIT] <= 1'b1;
-                else
-                    cc_out[CBIT] <= 1'b0;
-            alu_type_alu_sec :
-                cc_out[CBIT] <= 1'b1;
-            alu_type_alu_clc :
-                cc_out[CBIT] <= 1'b0;
-            alu_type_alu_tap :
-                cc_out[CBIT] <= left[CBIT];
-            default :		// carry is not affected by cpx
-                cc_out[CBIT] <= cc[CBIT];
-        endcase
-        //
-        // Zero flag
-        //
-        case (alu_ctrl)
-            alu_type_alu_add8, alu_type_alu_sub8, alu_type_alu_adc, alu_type_alu_sbc, alu_type_alu_and, alu_type_alu_ora, alu_type_alu_eor, alu_type_alu_inc, alu_type_alu_dec, alu_type_alu_neg, alu_type_alu_com, alu_type_alu_clr, alu_type_alu_rol8, alu_type_alu_ror8, alu_type_alu_asr8, alu_type_alu_asl8, alu_type_alu_lsr8, alu_type_alu_ld8, alu_type_alu_st8 :
-                cc_out[ZBIT] <= (~(out_alu[7] | out_alu[6] | out_alu[5] | out_alu[4] | out_alu[3] | out_alu[2] | out_alu[1] | out_alu[0]));
-            alu_type_alu_add16, alu_type_alu_sub16, alu_type_alu_lsl16, alu_type_alu_lsr16, alu_type_alu_inx, alu_type_alu_dex, alu_type_alu_ld16, alu_type_alu_st16, alu_type_alu_cpx :
-                cc_out[ZBIT] <= (~(out_alu[15] | out_alu[14] | out_alu[13] | out_alu[12] | out_alu[11] | out_alu[10] | out_alu[9] | out_alu[8] | out_alu[7] | out_alu[6] | out_alu[5] | out_alu[4] | out_alu[3] | out_alu[2] | out_alu[1] | out_alu[0]));
-            alu_type_alu_tap :
-                cc_out[ZBIT] <= left[ZBIT];
-            default :
-                cc_out[ZBIT] <= cc[ZBIT];
-        endcase
-        
-        //
-        // negative flag
-        //
-        case (alu_ctrl)
-            alu_type_alu_add8, alu_type_alu_sub8, alu_type_alu_adc, alu_type_alu_sbc, alu_type_alu_and, alu_type_alu_ora, alu_type_alu_eor, alu_type_alu_rol8, alu_type_alu_ror8, alu_type_alu_asr8, alu_type_alu_asl8, alu_type_alu_lsr8, alu_type_alu_inc, alu_type_alu_dec, alu_type_alu_neg, alu_type_alu_com, alu_type_alu_clr, alu_type_alu_ld8, alu_type_alu_st8 :
-                cc_out[NBIT] <= out_alu[7];
-            alu_type_alu_add16, alu_type_alu_sub16, alu_type_alu_lsl16, alu_type_alu_lsr16, alu_type_alu_ld16, alu_type_alu_st16, alu_type_alu_cpx :
-                cc_out[NBIT] <= out_alu[15];
-            alu_type_alu_tap :
-                cc_out[NBIT] <= left[NBIT];
-            default :
-                cc_out[NBIT] <= cc[NBIT];
-        endcase
-        
-        //
-        // Interrupt mask flag
-        //
-        case (alu_ctrl)
-            alu_type_alu_sei :
-                cc_out[IBIT] <= 1'b1;		// set interrupt mask
-            alu_type_alu_cli :
-                cc_out[IBIT] <= 1'b0;		// clear interrupt mask
-            alu_type_alu_tap :
-                cc_out[IBIT] <= left[IBIT];
-            default :
-                cc_out[IBIT] <= cc[IBIT];		// interrupt mask
-        endcase
-        
-        //
-        // Half Carry flag
-        //
-        case (alu_ctrl)
-            alu_type_alu_add8, alu_type_alu_adc :
-                cc_out[HBIT] <= (left[3] & right[3]) | (right[3] & (~out_alu[3])) | (left[3] & (~out_alu[3]));
-            alu_type_alu_tap :
-                cc_out[HBIT] <= left[HBIT];
-            default :
-                cc_out[HBIT] <= cc[HBIT];
-        endcase
-        
-        //
-        // Overflow flag
-        //
-        case (alu_ctrl)
-            alu_type_alu_add8, alu_type_alu_adc :
-                cc_out[VBIT] <= (left[7] & right[7] & ((~out_alu[7]))) | (((~left[7])) & ((~right[7])) & out_alu[7]);
-            alu_type_alu_sub8, alu_type_alu_sbc :
-                cc_out[VBIT] <= (left[7] & ((~right[7])) & ((~out_alu[7]))) | (((~left[7])) & right[7] & out_alu[7]);
-            alu_type_alu_add16 :
-                cc_out[VBIT] <= (left[15] & right[15] & ((~out_alu[15]))) | (((~left[15])) & ((~right[15])) & out_alu[15]);
-            alu_type_alu_sub16, alu_type_alu_cpx :
-                cc_out[VBIT] <= (left[15] & ((~right[15])) & ((~out_alu[15]))) | (((~left[15])) & right[15] & out_alu[15]);
-            alu_type_alu_inc :
-                cc_out[VBIT] <= (((~left[7])) & left[6] & left[5] & left[4] & left[3] & left[2] & left[1] & left[0]);
-            alu_type_alu_dec, alu_type_alu_neg :
-                cc_out[VBIT] <= (left[7] & ((~left[6])) & ((~left[5])) & ((~left[4])) & ((~left[3])) & ((~left[2])) & ((~left[1])) & ((~left[0])));
-            alu_type_alu_asr8 :
-                cc_out[VBIT] <= left[0] ^ left[7];
-            alu_type_alu_lsr8, alu_type_alu_lsr16 :
-                cc_out[VBIT] <= left[0];
-            alu_type_alu_ror8 :
-                cc_out[VBIT] <= left[0] ^ cc[CBIT];
-            alu_type_alu_lsl16 :
-                cc_out[VBIT] <= left[15] ^ left[14];
-            alu_type_alu_rol8, alu_type_alu_asl8 :
-                cc_out[VBIT] <= left[7] ^ left[6];
-            alu_type_alu_tap :
-                cc_out[VBIT] <= left[VBIT];
-            alu_type_alu_and, alu_type_alu_ora, alu_type_alu_eor, alu_type_alu_com, alu_type_alu_st8, alu_type_alu_st16, alu_type_alu_ld8, alu_type_alu_ld16, alu_type_alu_clv :
-                cc_out[VBIT] <= 1'b0;
-            alu_type_alu_sev :
-                cc_out[VBIT] <= 1'b1;
-            default :
-                cc_out[VBIT] <= cc[VBIT];
-        endcase
-        
-        case (alu_ctrl)
-            alu_type_alu_tap :
-                begin
-                    cc_out[XBIT] <= cc[XBIT] & left[XBIT];
-                    cc_out[SBIT] <= left[SBIT];
-                end
-            default :
-                begin
-                    cc_out[XBIT] <= cc[XBIT] & left[XBIT];
-                    cc_out[SBIT] <= cc[SBIT];
-                end
-        endcase
-        
-        test_alu <= out_alu;
-        test_cc <= cc_out;
     end
-    
-    //----------------------------------
-    //
-    // Detect Edge of NMI interrupt
-    //
-    //----------------------------------
-    
-    
-    always @(negedge clk or rst or nmi or nmi_ack)
-    begin: nmi_handler
-        
-        begin
-            if (hold == 1'b1)
-                nmi_req <= nmi_req;
-            else
-                if (rst == 1'b1)
-                    nmi_req <= 1'b0;
-                else
-                    if ((nmi == 1'b1) & (nmi_ack == 1'b0))
-                        nmi_req <= 1'b1;
-                    else
-                        if ((nmi == 1'b0) & (nmi_ack == 1'b1))
-                            nmi_req <= 1'b0;
-                        else
-                            nmi_req <= nmi_req;
+
+    // ----------------------------------
+    // NMI edge detect / ack
+    // ----------------------------------
+    always @(negedge clk) begin
+        if (~hold) begin
+            if (rst) nmi_req <= 1'b0;
+            else if ( nmi & ~nmi_ack) nmi_req <= 1'b1;
+            else if (~nmi &  nmi_ack) nmi_req <= 1'b0;
         end
     end
-    
-    //----------------------------------
-    //
-    // Nmi mux
-    //
-    //----------------------------------
-    
-    
-    always @(negedge clk or nmi_ctrl or nmi_ack or hold)
-    begin: nmi_mux
-        
-        begin
-            if (hold == 1'b1)
-                nmi_ack <= nmi_ack;
-            else
-                case (nmi_ctrl)
-                    nmi_type_set_nmi :
-                        nmi_ack <= 1'b1;
-                    nmi_type_reset_nmi :
-                        nmi_ack <= 1'b0;
-                    default :
-                        //  when latch_nmi =>
-                        nmi_ack <= nmi_ack;
-                endcase
+
+    always @(negedge clk) begin
+        if (~hold) begin
+            case (nmi_ctrl)
+                NMI_SET:   nmi_ack <= 1'b1;
+                NMI_RESET: nmi_ack <= 1'b0;
+                default:   nmi_ack <= nmi_ack;
+            endcase
         end
     end
-    
-    //----------------------------------
-    //
-    // state sequencer
-    //
-    //----------------------------------
-    
-    always @(state or op_code or cc or ea or irq or nmi_req or nmi_ack or hold or halt)
+
+    // ----------------------------------
+    // State sequencer
+    // ----------------------------------
+    // helper for MUL bit selection
+    reg mul_bit;
+    always @* begin
+        // Defaults (most states override these)
+        op_ctrl    = OP_LATCH;
+        acca_ctrl  = ACCA_LATCH;
+        accb_ctrl  = ACCB_LATCH;
+        ix_ctrl    = IX_LATCH;
+        sp_ctrl    = SP_LATCH;
+        pc_ctrl    = PC_LATCH;
+        ea_ctrl    = EA_LATCH;
+        md_ctrl    = MD_LATCH;
+        iv_ctrl    = IV_LATCH;
+        nmi_ctrl   = NMI_LATCH;
+        left_ctrl  = LEFT_ACCA;
+        right_ctrl = RIGHT_ZERO;
+        alu_ctrl   = ALU_NOP;
+        cc_ctrl    = CC_LATCH;
+        addr_ctrl  = AD_IDLE;
+        dout_ctrl  = DO_MD_LO;
+        next_state = ST_FETCH;
+        mul_bit    = 1'b0;
+
         case (state)
-            state_type_reset_state :		//  released from reset
-                begin
-                    // reset the registers
-                    op_ctrl <= op_type_reset_op;
-                    acca_ctrl <= acca_type_reset_acca;
-                    accb_ctrl <= accb_type_reset_accb;
-                    ix_ctrl <= ix_type_reset_ix;
-                    sp_ctrl <= sp_type_reset_sp;
-                    pc_ctrl <= pc_type_reset_pc;
-                    ea_ctrl <= ea_type_reset_ea;
-                    md_ctrl <= md_type_reset_md;
-                    iv_ctrl <= iv_type_reset_iv;
-                    nmi_ctrl <= nmi_type_reset_nmi;
-                    // idle the ALU
-                    left_ctrl <= left_type_acca_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_reset_cc;
-                    // idle the bus
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    addr_ctrl <= addr_type_idle_ad;
-                    next_state <= state_type_vect_hi_state;
-                end
-            
-            //
-            // Jump via interrupt vector
-            // iv holds interrupt type
-            // fetch PC hi from vector location
-            //
-            state_type_vect_hi_state :
-                begin
-                    // default the registers
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    md_ctrl <= md_type_latch_md;
-                    ea_ctrl <= ea_type_latch_ea;
-                    iv_ctrl <= iv_type_latch_iv;
-                    // idle the ALU
-                    left_ctrl <= left_type_acca_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    // fetch pc low interrupt vector
-                    pc_ctrl <= pc_type_pull_hi_pc;
-                    addr_ctrl <= addr_type_int_hi_ad;
-                    dout_ctrl <= dout_type_pc_hi_dout;
-                    next_state <= state_type_vect_lo_state;
-                end
-            //
-            // jump via interrupt vector
-            // iv holds vector type
-            // fetch PC lo from vector location
-            //
-            state_type_vect_lo_state :
-                begin
-                    // default the registers
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    md_ctrl <= md_type_latch_md;
-                    ea_ctrl <= ea_type_latch_ea;
-                    iv_ctrl <= iv_type_latch_iv;
-                    // idle the ALU
-                    left_ctrl <= left_type_acca_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    // fetch the vector low byte
-                    pc_ctrl <= pc_type_pull_lo_pc;
-                    addr_ctrl <= addr_type_int_lo_ad;
-                    dout_ctrl <= dout_type_pc_lo_dout;
-                    next_state <= state_type_fetch_state;
-                end
-            
-            //
-            // Here to fetch an instruction
-            // PC points to opcode
-            // Should service interrupt requests at this point
-            // either from the timer
-            // or from the external input.
-            //
-            state_type_fetch_state :
-                begin
-                    case (op_code[7:4])
-                        // branch conditional
-                        // acca single op
-                        // accb single op
-                        // indexed single op
-                        4'b0000, 4'b0001, 4'b0010, 4'b0011, 4'b0100, 4'b0101, 4'b0110, 4'b0111 :		// extended single op
-                            begin
-                                // idle ALU
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                            end
-                        
-                        // acca immediate
-                        // acca direct
-                        // acca indexed
-                        4'b1000, 4'b1001, 4'b1010, 4'b1011 :		// acca extended
-                            case (op_code[3:0])
-                                4'b0000 :		// suba
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_sub8;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_load_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b0001 :		// cmpa
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_sub8;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b0010 :		// sbca
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_sbc;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_load_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b0011 :		// subd
-                                    begin
-                                        left_ctrl <= left_type_accd_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_sub16;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_load_hi_acca;
-                                        accb_ctrl <= accb_type_load_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b0100 :		// anda
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_and;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_load_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b0101 :		// bita
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_and;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b0110 :		// ldaa
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_ld8;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_load_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b0111 :		// staa
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_st8;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b1000 :		// eora
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_eor;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_load_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b1001 :		// adca
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_adc;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_load_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b1010 :		// oraa
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_ora;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_load_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b1011 :		// adda
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_add8;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_load_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b1100 :		// cpx
-                                    begin
-                                        left_ctrl <= left_type_ix_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_cpx;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b1101 :		// bsr / jsr
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_nop;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b1110 :		// lds
-                                    begin
-                                        left_ctrl <= left_type_sp_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_ld16;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_load_sp;
-                                    end
-                                4'b1111 :		// sts
-                                    begin
-                                        left_ctrl <= left_type_sp_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_st16;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                default :
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_nop;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                            endcase
-                        // accb immediate
-                        // accb direct
-                        // accb indexed
-                        4'b1100, 4'b1101, 4'b1110, 4'b1111 :		// accb extended
-                            case (op_code[3:0])
-                                4'b0000 :		// subb
-                                    begin
-                                        left_ctrl <= left_type_accb_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_sub8;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_load_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b0001 :		// cmpb
-                                    begin
-                                        left_ctrl <= left_type_accb_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_sub8;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b0010 :		// sbcb
-                                    begin
-                                        left_ctrl <= left_type_accb_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_sbc;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_load_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b0011 :		// addd
-                                    begin
-                                        left_ctrl <= left_type_accd_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_add16;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_load_hi_acca;
-                                        accb_ctrl <= accb_type_load_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b0100 :		// andb
-                                    begin
-                                        left_ctrl <= left_type_accb_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_and;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_load_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b0101 :		// bitb
-                                    begin
-                                        left_ctrl <= left_type_accb_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_and;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b0110 :		// ldab
-                                    begin
-                                        left_ctrl <= left_type_accb_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_ld8;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_load_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b0111 :		// stab
-                                    begin
-                                        left_ctrl <= left_type_accb_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_st8;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b1000 :		// eorb
-                                    begin
-                                        left_ctrl <= left_type_accb_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_eor;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_load_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b1001 :		// adcb
-                                    begin
-                                        left_ctrl <= left_type_accb_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_adc;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_load_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b1010 :		// orab
-                                    begin
-                                        left_ctrl <= left_type_accb_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_ora;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_load_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b1011 :		// addb
-                                    begin
-                                        left_ctrl <= left_type_accb_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_add8;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_load_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b1100 :		// ldd
-                                    begin
-                                        left_ctrl <= left_type_accd_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_ld16;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_load_hi_acca;
-                                        accb_ctrl <= accb_type_load_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b1101 :		// std
-                                    begin
-                                        left_ctrl <= left_type_accd_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_st16;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b1110 :		// ldx
-                                    begin
-                                        left_ctrl <= left_type_ix_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_ld16;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_load_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                4'b1111 :		// stx
-                                    begin
-                                        left_ctrl <= left_type_ix_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_st16;
-                                        cc_ctrl <= cc_type_load_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                                default :
-                                    begin
-                                        left_ctrl <= left_type_accb_left;
-                                        right_ctrl <= right_type_md_right;
-                                        alu_ctrl <= alu_type_alu_nop;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        acca_ctrl <= acca_type_latch_acca;
-                                        accb_ctrl <= accb_type_latch_accb;
-                                        ix_ctrl <= ix_type_latch_ix;
-                                        sp_ctrl <= sp_type_latch_sp;
-                                    end
-                            endcase
-                        default :
-                            begin
-                                left_ctrl <= left_type_accd_left;
-                                right_ctrl <= right_type_md_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                            end
-                    endcase
-                    md_ctrl <= md_type_latch_md;
-                    // fetch the op code
-                    op_ctrl <= op_type_fetch_op;
-                    ea_ctrl <= ea_type_reset_ea;
-                    addr_ctrl <= addr_type_fetch_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    iv_ctrl <= iv_type_latch_iv;
-                    if (halt == 1'b1)
-                    begin
-                        pc_ctrl <= pc_type_latch_pc;
-                        nmi_ctrl <= nmi_type_latch_nmi;
-                        next_state <= state_type_halt_state;
-                    end
-                    // service non maskable interrupts
-                    else if ((nmi_req == 1'b1) & (nmi_ack == 1'b0))
-                    begin
-                        pc_ctrl <= pc_type_latch_pc;
-                        nmi_ctrl <= nmi_type_set_nmi;
-                        next_state <= state_type_int_pcl_state;
-                    end
-                    else
-                    begin
-                        // service maskable interrupts
-                        //
-                        // nmi request is not cleared until nmi input goes low
-                        //
-                        if ((nmi_req == 1'b0) & (nmi_ack == 1'b1))
-                            nmi_ctrl <= nmi_type_reset_nmi;
-                        else
-                            nmi_ctrl <= nmi_type_latch_nmi;
-                        //
-                        // IRQ is level sensitive
-                        //
-                        if ((irq == 1'b1) & (cc[IBIT] == 1'b0))
-                        begin
-                            pc_ctrl <= pc_type_latch_pc;
-                            next_state <= state_type_int_pcl_state;
-                        end
-                        else
-                        begin
-                            // Advance the PC to fetch next instruction byte
-                            pc_ctrl <= pc_type_inc_pc;
-                            next_state <= state_type_decode_state;
-                        end
-                    end
-                end
-            //
-            // Here to decode instruction
-            // and fetch next byte of intruction
-            // whether it be necessary or not
-            //
-            state_type_decode_state :
-                begin
-                    // fetch first byte of address or immediate data
-                    ea_ctrl <= ea_type_fetch_first_ea;
-                    addr_ctrl <= addr_type_fetch_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    iv_ctrl <= iv_type_latch_iv;
-                    case (op_code[7:4])
-                        4'b0000 :
-                            begin
-                                md_ctrl <= md_type_fetch_first_md;
-                                sp_ctrl <= sp_type_latch_sp;
-                                pc_ctrl <= pc_type_latch_pc;
-                                case (op_code[3:0])
-                                    4'b0001 :		// nop
-                                        begin
-                                            left_ctrl <= left_type_accd_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                        end
-                                    4'b0100 :		// lsrd
-                                        begin
-                                            left_ctrl <= left_type_accd_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_lsr16;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_load_hi_acca;
-                                            accb_ctrl <= accb_type_load_accb;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                        end
-                                    4'b0101 :		// lsld
-                                        begin
-                                            left_ctrl <= left_type_accd_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_lsl16;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_load_hi_acca;
-                                            accb_ctrl <= accb_type_load_accb;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                        end
-                                    4'b0110 :		// tap
-                                        begin
-                                            left_ctrl <= left_type_acca_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_tap;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                        end
-                                    4'b0111 :		// tpa
-                                        begin
-                                            left_ctrl <= left_type_acca_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_tpa;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            acca_ctrl <= acca_type_load_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                        end
-                                    4'b1000 :		// inx
-                                        begin
-                                            left_ctrl <= left_type_ix_left;
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_inx;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            ix_ctrl <= ix_type_load_ix;
-                                        end
-                                    4'b1001 :		// dex
-                                        begin
-                                            left_ctrl <= left_type_ix_left;
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_dex;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            ix_ctrl <= ix_type_load_ix;
-                                        end
-                                    4'b1010 :		// clv
-                                        begin
-                                            left_ctrl <= left_type_acca_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_clv;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                        end
-                                    4'b1011 :		// sev
-                                        begin
-                                            left_ctrl <= left_type_acca_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_sev;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                        end
-                                    4'b1100 :		// clc
-                                        begin
-                                            left_ctrl <= left_type_acca_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_clc;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                        end
-                                    4'b1101 :		// sec
-                                        begin
-                                            left_ctrl <= left_type_acca_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_sec;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                        end
-                                    4'b1110 :		// cli
-                                        begin
-                                            left_ctrl <= left_type_acca_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_cli;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                        end
-                                    4'b1111 :		// sei
-                                        begin
-                                            left_ctrl <= left_type_acca_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_sei;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                        end
-                                    default :
-                                        begin
-                                            left_ctrl <= left_type_acca_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                        end
-                                endcase
-                                next_state <= state_type_fetch_state;
-                            end
-                        // acca / accb inherent instructions
-                        4'b0001 :
-                            begin
-                                md_ctrl <= md_type_fetch_first_md;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                pc_ctrl <= pc_type_latch_pc;
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_accb_right;
-                                case (op_code[3:0])
-                                    4'b0000 :		// sba
-                                        begin
-                                            alu_ctrl <= alu_type_alu_sub8;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_load_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                        end
-                                    4'b0001 :		// cba
-                                        begin
-                                            alu_ctrl <= alu_type_alu_sub8;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                        end
-                                    4'b0110 :		// tab
-                                        begin
-                                            alu_ctrl <= alu_type_alu_st8;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            accb_ctrl <= accb_type_load_accb;
-                                        end
-                                    4'b0111 :		// tba
-                                        begin
-                                            alu_ctrl <= alu_type_alu_ld8;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_load_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                        end
-                                    4'b1001 :		// daa
-                                        begin
-                                            alu_ctrl <= alu_type_alu_daa;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_load_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                        end
-                                    4'b1011 :		// aba
-                                        begin
-                                            alu_ctrl <= alu_type_alu_add8;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            acca_ctrl <= acca_type_load_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                        end
-                                    default :
-                                        begin
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                        end
-                                endcase
-                                next_state <= state_type_fetch_state;
-                            end
-                        4'b0010 :		// branch conditional
-                            begin
-                                md_ctrl <= md_type_fetch_first_md;
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                // increment the pc
-                                pc_ctrl <= pc_type_inc_pc;
-                                case (op_code[3:0])
-                                    4'b0000 :		// bra
-                                        next_state <= state_type_branch_state;
-                                    4'b0001 :		// brn
-                                        next_state <= state_type_fetch_state;
-                                    4'b0010 :		// bhi
-                                        if ((cc[CBIT] | cc[ZBIT]) == 1'b0)
-                                            next_state <= state_type_branch_state;
-                                        else
-                                            next_state <= state_type_fetch_state;
-                                    4'b0011 :		// bls
-                                        if ((cc[CBIT] | cc[ZBIT]) == 1'b1)
-                                            next_state <= state_type_branch_state;
-                                        else
-                                            next_state <= state_type_fetch_state;
-                                    4'b0100 :		// bcc/bhs
-                                        if (cc[CBIT] == 1'b0)
-                                            next_state <= state_type_branch_state;
-                                        else
-                                            next_state <= state_type_fetch_state;
-                                    4'b0101 :		// bcs/blo
-                                        if (cc[CBIT] == 1'b1)
-                                            next_state <= state_type_branch_state;
-                                        else
-                                            next_state <= state_type_fetch_state;
-                                    4'b0110 :		// bne
-                                        if (cc[ZBIT] == 1'b0)
-                                            next_state <= state_type_branch_state;
-                                        else
-                                            next_state <= state_type_fetch_state;
-                                    4'b0111 :		// beq
-                                        if (cc[ZBIT] == 1'b1)
-                                            next_state <= state_type_branch_state;
-                                        else
-                                            next_state <= state_type_fetch_state;
-                                    4'b1000 :		// bvc
-                                        if (cc[VBIT] == 1'b0)
-                                            next_state <= state_type_branch_state;
-                                        else
-                                            next_state <= state_type_fetch_state;
-                                    4'b1001 :		// bvs
-                                        if (cc[VBIT] == 1'b1)
-                                            next_state <= state_type_branch_state;
-                                        else
-                                            next_state <= state_type_fetch_state;
-                                    4'b1010 :		// bpl
-                                        if (cc[NBIT] == 1'b0)
-                                            next_state <= state_type_branch_state;
-                                        else
-                                            next_state <= state_type_fetch_state;
-                                    4'b1011 :		// bmi
-                                        if (cc[NBIT] == 1'b1)
-                                            next_state <= state_type_branch_state;
-                                        else
-                                            next_state <= state_type_fetch_state;
-                                    4'b1100 :		// bge
-                                        if ((cc[NBIT] ^ cc[VBIT]) == 1'b0)
-                                            next_state <= state_type_branch_state;
-                                        else
-                                            next_state <= state_type_fetch_state;
-                                    4'b1101 :		// blt
-                                        if ((cc[NBIT] ^ cc[VBIT]) == 1'b1)
-                                            next_state <= state_type_branch_state;
-                                        else
-                                            next_state <= state_type_fetch_state;
-                                    4'b1110 :		// bgt
-                                        if ((cc[ZBIT] | (cc[NBIT] ^ cc[VBIT])) == 1'b0)
-                                            next_state <= state_type_branch_state;
-                                        else
-                                            next_state <= state_type_fetch_state;
-                                    4'b1111 :		// ble
-                                        if ((cc[ZBIT] | (cc[NBIT] ^ cc[VBIT])) == 1'b1)
-                                            next_state <= state_type_branch_state;
-                                        else
-                                            next_state <= state_type_fetch_state;
-                                    default :
-                                        next_state <= state_type_fetch_state;
-                                endcase
-                            end
-                        //
-                        // Single byte stack operators
-                        // Do not advance PC
-                        //
-                        4'b0011 :
-                            begin
-                                md_ctrl <= md_type_fetch_first_md;
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                pc_ctrl <= pc_type_latch_pc;
-                                case (op_code[3:0])
-                                    4'b0000 :		// tsx
-                                        begin
-                                            left_ctrl <= left_type_sp_left;
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_add16;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_load_ix;
-                                            sp_ctrl <= sp_type_latch_sp;
-                                            next_state <= state_type_fetch_state;
-                                        end
-                                    4'b0001 :		// ins
-                                        begin
-                                            left_ctrl <= left_type_sp_left;
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_add16;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                            sp_ctrl <= sp_type_load_sp;
-                                            next_state <= state_type_fetch_state;
-                                        end
-                                    4'b0010 :		// pula
-                                        begin
-                                            left_ctrl <= left_type_sp_left;
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_add16;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                            sp_ctrl <= sp_type_load_sp;
-                                            next_state <= state_type_pula_state;
-                                        end
-                                    4'b0011 :		// pulb
-                                        begin
-                                            left_ctrl <= left_type_sp_left;
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_add16;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                            sp_ctrl <= sp_type_load_sp;
-                                            next_state <= state_type_pulb_state;
-                                        end
-                                    4'b0100 :		// des
-                                        begin
-                                            // decrement sp
-                                            left_ctrl <= left_type_sp_left;
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_sub16;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                            sp_ctrl <= sp_type_load_sp;
-                                            next_state <= state_type_fetch_state;
-                                        end
-                                    4'b0101 :		// txs
-                                        begin
-                                            left_ctrl <= left_type_ix_left;
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_sub16;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                            sp_ctrl <= sp_type_load_sp;
-                                            next_state <= state_type_fetch_state;
-                                        end
-                                    4'b0110 :		// psha
-                                        begin
-                                            left_ctrl <= left_type_sp_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                            sp_ctrl <= sp_type_latch_sp;
-                                            next_state <= state_type_psha_state;
-                                        end
-                                    4'b0111 :		// pshb
-                                        begin
-                                            left_ctrl <= left_type_sp_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                            sp_ctrl <= sp_type_latch_sp;
-                                            next_state <= state_type_pshb_state;
-                                        end
-                                    4'b1000 :		// pulx
-                                        begin
-                                            left_ctrl <= left_type_sp_left;
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_add16;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                            sp_ctrl <= sp_type_load_sp;
-                                            next_state <= state_type_pulx_hi_state;
-                                        end
-                                    4'b1001 :		// rts
-                                        begin
-                                            left_ctrl <= left_type_sp_left;
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_add16;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                            sp_ctrl <= sp_type_load_sp;
-                                            next_state <= state_type_rts_hi_state;
-                                        end
-                                    4'b1010 :		// abx
-                                        begin
-                                            left_ctrl <= left_type_ix_left;
-                                            right_ctrl <= right_type_accb_right;
-                                            alu_ctrl <= alu_type_alu_add16;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_load_ix;
-                                            sp_ctrl <= sp_type_latch_sp;
-                                            next_state <= state_type_fetch_state;
-                                        end
-                                    4'b1011 :		// rti
-                                        begin
-                                            left_ctrl <= left_type_sp_left;
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_add16;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                            sp_ctrl <= sp_type_load_sp;
-                                            next_state <= state_type_rti_cc_state;
-                                        end
-                                    4'b1100 :		// pshx
-                                        begin
-                                            left_ctrl <= left_type_sp_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                            sp_ctrl <= sp_type_latch_sp;
-                                            next_state <= state_type_pshx_lo_state;
-                                        end
-                                    4'b1101 :		// mul
-                                        begin
-                                            left_ctrl <= left_type_acca_left;
-                                            right_ctrl <= right_type_accb_right;
-                                            alu_ctrl <= alu_type_alu_add16;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                            sp_ctrl <= sp_type_latch_sp;
-                                            next_state <= state_type_mul_state;
-                                        end
-                                    4'b1110 :		// wai
-                                        begin
-                                            left_ctrl <= left_type_sp_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                            sp_ctrl <= sp_type_latch_sp;
-                                            next_state <= state_type_int_pcl_state;
-                                        end
-                                    4'b1111 :		// swi
-                                        begin
-                                            left_ctrl <= left_type_sp_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                            sp_ctrl <= sp_type_latch_sp;
-                                            next_state <= state_type_int_pcl_state;
-                                        end
-                                    default :
-                                        begin
-                                            left_ctrl <= left_type_sp_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            ix_ctrl <= ix_type_latch_ix;
-                                            sp_ctrl <= sp_type_latch_sp;
-                                            next_state <= state_type_fetch_state;
-                                        end
-                                endcase
-                            end
-                        //
-                        // Accumulator A Single operand
-                        // source = Acc A dest = Acc A
-                        // Do not advance PC
-                        //
-                        4'b0100 :		// acca single op
-                            begin
-                                md_ctrl <= md_type_fetch_first_md;
-                                accb_ctrl <= accb_type_latch_accb;
-                                pc_ctrl <= pc_type_latch_pc;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                left_ctrl <= left_type_acca_left;
-                                case (op_code[3:0])
-                                    4'b0000 :		// neg
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_neg;
-                                            acca_ctrl <= acca_type_load_acca;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b0011 :		// com
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_com;
-                                            acca_ctrl <= acca_type_load_acca;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b0100 :		// lsr
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_lsr8;
-                                            acca_ctrl <= acca_type_load_acca;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b0110 :		// ror
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_ror8;
-                                            acca_ctrl <= acca_type_load_acca;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b0111 :		// asr
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_asr8;
-                                            acca_ctrl <= acca_type_load_acca;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b1000 :		// asl
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_asl8;
-                                            acca_ctrl <= acca_type_load_acca;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b1001 :		// rol
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_rol8;
-                                            acca_ctrl <= acca_type_load_acca;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b1010 :		// dec
-                                        begin
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_dec;
-                                            acca_ctrl <= acca_type_load_acca;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b1011 :		// undefined
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                        end
-                                    4'b1100 :		// inc
-                                        begin
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_inc;
-                                            acca_ctrl <= acca_type_load_acca;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b1101 :		// tst
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_st8;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b1110 :		// jmp
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                        end
-                                    4'b1111 :		// clr
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_clr;
-                                            acca_ctrl <= acca_type_load_acca;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    default :
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            acca_ctrl <= acca_type_latch_acca;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                        end
-                                endcase
-                                next_state <= state_type_fetch_state;
-                            end
-                        //
-                        // single operand acc b
-                        // Do not advance PC
-                        //
-                        4'b0101 :
-                            begin
-                                md_ctrl <= md_type_fetch_first_md;
-                                acca_ctrl <= acca_type_latch_acca;
-                                pc_ctrl <= pc_type_latch_pc;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                left_ctrl <= left_type_accb_left;
-                                case (op_code[3:0])
-                                    4'b0000 :		// neg
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_neg;
-                                            accb_ctrl <= accb_type_load_accb;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b0011 :		// com
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_com;
-                                            accb_ctrl <= accb_type_load_accb;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b0100 :		// lsr
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_lsr8;
-                                            accb_ctrl <= accb_type_load_accb;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b0110 :		// ror
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_ror8;
-                                            accb_ctrl <= accb_type_load_accb;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b0111 :		// asr
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_asr8;
-                                            accb_ctrl <= accb_type_load_accb;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b1000 :		// asl
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_asl8;
-                                            accb_ctrl <= accb_type_load_accb;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b1001 :		// rol
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_rol8;
-                                            accb_ctrl <= accb_type_load_accb;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b1010 :		// dec
-                                        begin
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_dec;
-                                            accb_ctrl <= accb_type_load_accb;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b1011 :		// undefined
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                        end
-                                    4'b1100 :		// inc
-                                        begin
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_inc;
-                                            accb_ctrl <= accb_type_load_accb;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b1101 :		// tst
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_st8;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    4'b1110 :		// jmp
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                        end
-                                    4'b1111 :		// clr
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_clr;
-                                            accb_ctrl <= accb_type_load_accb;
-                                            cc_ctrl <= cc_type_load_cc;
-                                        end
-                                    default :
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            accb_ctrl <= accb_type_latch_accb;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                        end
-                                endcase
-                                next_state <= state_type_fetch_state;
-                            end
-                        //
-                        // Single operand indexed
-                        // Two byte instruction so advance PC
-                        // EA should hold index offset
-                        //
-                        4'b0110 :		// indexed single op
-                            begin
-                                md_ctrl <= md_type_fetch_first_md;
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                // increment the pc 
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                pc_ctrl <= pc_type_inc_pc;
-                                next_state <= state_type_indexed_state;
-                            end
-                        //
-                        // Single operand extended addressing
-                        // three byte instruction so advance the PC
-                        // Low order EA holds high order address
-                        //
-                        4'b0111 :		// extended single op
-                            begin
-                                md_ctrl <= md_type_fetch_first_md;
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                // increment the pc
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                pc_ctrl <= pc_type_inc_pc;
-                                next_state <= state_type_extended_state;
-                            end
-                        
-                        4'b1000 :		// acca immediate
-                            begin
-                                md_ctrl <= md_type_fetch_first_md;
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                // increment the pc
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                pc_ctrl <= pc_type_inc_pc;
-                                case (op_code[3:0])
-                                    // subdd #
-                                    // cpx #
-                                    4'b0011, 4'b1100, 4'b1110 :		// lds #
-                                        next_state <= state_type_immediate16_state;
-                                    4'b1101 :		// bsr
-                                        next_state <= state_type_bsr_state;
-                                    default :
-                                        next_state <= state_type_fetch_state;
-                                endcase
-                            end
-                        
-                        4'b1001 :		// acca direct
-                            begin
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                // increment the pc
-                                pc_ctrl <= pc_type_inc_pc;
-                                case (op_code[3:0])
-                                    4'b0111 :		// staa direct
-                                        begin
-                                            left_ctrl <= left_type_acca_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_st8;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            md_ctrl <= md_type_load_md;
-                                            next_state <= state_type_write8_state;
-                                        end
-                                    4'b1111 :		// sts direct
-                                        begin
-                                            left_ctrl <= left_type_sp_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_st16;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            md_ctrl <= md_type_load_md;
-                                            next_state <= state_type_write16_state;
-                                        end
-                                    4'b1101 :		// jsr direct
-                                        begin
-                                            left_ctrl <= left_type_acca_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            md_ctrl <= md_type_fetch_first_md;
-                                            next_state <= state_type_jsr_state;
-                                        end
-                                    default :
-                                        begin
-                                            left_ctrl <= left_type_acca_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            md_ctrl <= md_type_fetch_first_md;
-                                            next_state <= state_type_read8_state;
-                                        end
-                                endcase
-                            end
-                        
-                        4'b1010 :		// acca indexed
-                            begin
-                                md_ctrl <= md_type_fetch_first_md;
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                // increment the pc
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                pc_ctrl <= pc_type_inc_pc;
-                                next_state <= state_type_indexed_state;
-                            end
-                        
-                        4'b1011 :		// acca extended
-                            begin
-                                md_ctrl <= md_type_fetch_first_md;
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                // increment the pc
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                pc_ctrl <= pc_type_inc_pc;
-                                next_state <= state_type_extended_state;
-                            end
-                        
-                        4'b1100 :		// accb immediate
-                            begin
-                                md_ctrl <= md_type_fetch_first_md;
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                // increment the pc
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                pc_ctrl <= pc_type_inc_pc;
-                                case (op_code[3:0])
-                                    // addd #
-                                    // ldd #
-                                    4'b0011, 4'b1100, 4'b1110 :		// ldx #
-                                        next_state <= state_type_immediate16_state;
-                                    default :
-                                        next_state <= state_type_fetch_state;
-                                endcase
-                            end
-                        
-                        4'b1101 :		// accb direct
-                            begin
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                // increment the pc
-                                pc_ctrl <= pc_type_inc_pc;
-                                case (op_code[3:0])
-                                    4'b0111 :		// stab direct
-                                        begin
-                                            left_ctrl <= left_type_accb_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_st8;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            md_ctrl <= md_type_load_md;
-                                            next_state <= state_type_write8_state;
-                                        end
-                                    4'b1101 :		// std direct
-                                        begin
-                                            left_ctrl <= left_type_accd_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_st16;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            md_ctrl <= md_type_load_md;
-                                            next_state <= state_type_write16_state;
-                                        end
-                                    4'b1111 :		// stx direct
-                                        begin
-                                            left_ctrl <= left_type_ix_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_st16;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            md_ctrl <= md_type_load_md;
-                                            next_state <= state_type_write16_state;
-                                        end
-                                    default :
-                                        begin
-                                            left_ctrl <= left_type_acca_left;
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            md_ctrl <= md_type_fetch_first_md;
-                                            next_state <= state_type_read8_state;
-                                        end
-                                endcase
-                            end
-                        
-                        4'b1110 :		// accb indexed
-                            begin
-                                md_ctrl <= md_type_fetch_first_md;
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                // increment the pc
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                pc_ctrl <= pc_type_inc_pc;
-                                next_state <= state_type_indexed_state;
-                            end
-                        
-                        4'b1111 :		// accb extended
-                            begin
-                                md_ctrl <= md_type_fetch_first_md;
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                // increment the pc
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                pc_ctrl <= pc_type_inc_pc;
-                                next_state <= state_type_extended_state;
-                            end
-                        
-                        default :
-                            begin
-                                md_ctrl <= md_type_fetch_first_md;
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                // idle the pc
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                pc_ctrl <= pc_type_latch_pc;
-                                next_state <= state_type_fetch_state;
-                            end
-                    endcase
-                end
-            
-            state_type_immediate16_state :
-                begin
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    op_ctrl <= op_type_latch_op;
-                    iv_ctrl <= iv_type_latch_iv;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // increment pc
-                    left_ctrl <= left_type_acca_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    pc_ctrl <= pc_type_inc_pc;
-                    // fetch next immediate byte
-                    md_ctrl <= md_type_fetch_next_md;
-                    addr_ctrl <= addr_type_fetch_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_fetch_state;
-                end
-            //
-            // ea holds 8 bit index offet
-            // calculate the effective memory address
-            // using the alu
-            //
-            state_type_indexed_state :
-                begin
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    // calculate effective address from index reg
-                    // index offest is not sign extended
-                    ea_ctrl <= ea_type_add_ix_ea;
-                    // idle the bus
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    // work out next state
-                    case (op_code[7:4])
-                        4'b0110 :		// single op indexed
-                            begin
-                                md_ctrl <= md_type_latch_md;
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                case (op_code[3:0])
-                                    4'b1011 :		// undefined
-                                        next_state <= state_type_fetch_state;
-                                    4'b1110 :		// jmp
-                                        next_state <= state_type_jmp_state;
-                                    default :
-                                        next_state <= state_type_read8_state;
-                                endcase
-                            end
-                        4'b1010 :		// acca indexed
-                            case (op_code[3:0])
-                                4'b0111 :		// staa
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_st8;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_load_md;
-                                        next_state <= state_type_write8_state;
-                                    end
-                                4'b1101 :		// jsr
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_nop;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_latch_md;
-                                        next_state <= state_type_jsr_state;
-                                    end
-                                4'b1111 :		// sts
-                                    begin
-                                        left_ctrl <= left_type_sp_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_st16;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_load_md;
-                                        next_state <= state_type_write16_state;
-                                    end
-                                default :
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_nop;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_latch_md;
-                                        next_state <= state_type_read8_state;
-                                    end
-                            endcase
-                        4'b1110 :		// accb indexed
-                            case (op_code[3:0])
-                                4'b0111 :		// stab direct
-                                    begin
-                                        left_ctrl <= left_type_accb_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_st8;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_load_md;
-                                        next_state <= state_type_write8_state;
-                                    end
-                                4'b1101 :		// std direct
-                                    begin
-                                        left_ctrl <= left_type_accd_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_st16;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_load_md;
-                                        next_state <= state_type_write16_state;
-                                    end
-                                4'b1111 :		// stx direct
-                                    begin
-                                        left_ctrl <= left_type_ix_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_st16;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_load_md;
-                                        next_state <= state_type_write16_state;
-                                    end
-                                default :
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_nop;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_latch_md;
-                                        next_state <= state_type_read8_state;
-                                    end
-                            endcase
-                        default :
-                            begin
-                                md_ctrl <= md_type_latch_md;
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                next_state <= state_type_fetch_state;
-                            end
-                    endcase
-                end
-            //
-            // ea holds the low byte of the absolute address
-            // Move ea low byte into ea high byte
-            // load new ea low byte to for absolute 16 bit address
-            // advance the program counter
-            //
-            state_type_extended_state :		// fetch ea low byte
-                begin
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    // increment pc
-                    pc_ctrl <= pc_type_inc_pc;
-                    // fetch next effective address bytes
-                    ea_ctrl <= ea_type_fetch_next_ea;
-                    addr_ctrl <= addr_type_fetch_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    // work out the next state
-                    case (op_code[7:4])
-                        4'b0111 :		// single op extended
-                            begin
-                                md_ctrl <= md_type_latch_md;
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                case (op_code[3:0])
-                                    4'b1011 :		// undefined
-                                        next_state <= state_type_fetch_state;
-                                    4'b1110 :		// jmp
-                                        next_state <= state_type_jmp_state;
-                                    default :
-                                        next_state <= state_type_read8_state;
-                                endcase
-                            end
-                        4'b1011 :		// acca extended
-                            case (op_code[3:0])
-                                4'b0111 :		// staa
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_st8;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_load_md;
-                                        next_state <= state_type_write8_state;
-                                    end
-                                4'b1101 :		// jsr
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_nop;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_latch_md;
-                                        next_state <= state_type_jsr_state;
-                                    end
-                                4'b1111 :		// sts
-                                    begin
-                                        left_ctrl <= left_type_sp_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_st16;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_load_md;
-                                        next_state <= state_type_write16_state;
-                                    end
-                                default :
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_nop;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_latch_md;
-                                        next_state <= state_type_read8_state;
-                                    end
-                            endcase
-                        4'b1111 :		// accb extended
-                            case (op_code[3:0])
-                                4'b0111 :		// stab
-                                    begin
-                                        left_ctrl <= left_type_accb_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_st8;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_load_md;
-                                        next_state <= state_type_write8_state;
-                                    end
-                                4'b1101 :		// std
-                                    begin
-                                        left_ctrl <= left_type_accd_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_st16;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_load_md;
-                                        next_state <= state_type_write16_state;
-                                    end
-                                4'b1111 :		// stx
-                                    begin
-                                        left_ctrl <= left_type_ix_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_st16;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_load_md;
-                                        next_state <= state_type_write16_state;
-                                    end
-                                default :
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_nop;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_latch_md;
-                                        next_state <= state_type_read8_state;
-                                    end
-                            endcase
-                        default :
-                            begin
-                                md_ctrl <= md_type_latch_md;
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                next_state <= state_type_fetch_state;
-                            end
-                    endcase
-                end
-            //
-            // here if ea holds low byte (direct page)
-            // can enter here from extended addressing
-            // read memory location
-            // note that reads may be 8 or 16 bits
-            //
-            state_type_read8_state :		// read data
-                begin
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    //
-                    addr_ctrl <= addr_type_read_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    case (op_code[7:4])
-                        4'b0110, 4'b0111 :		// single operand
-                            begin
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                md_ctrl <= md_type_fetch_first_md;
-                                ea_ctrl <= ea_type_latch_ea;
-                                next_state <= state_type_execute_state;
-                            end
-                        
-                        4'b1001, 4'b1010, 4'b1011 :		// acca
-                            case (op_code[3:0])
-                                // subd
-                                // lds
-                                4'b0011, 4'b1110, 4'b1100 :		// cpx
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_nop;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_fetch_first_md;
-                                        // increment the effective address in case of 16 bit load
-                                        ea_ctrl <= ea_type_inc_ea;
-                                        next_state <= state_type_read16_state;
-                                    end
-                                //					    when "0111" =>   -- staa
-                                // 					      left_ctrl  <= acca_left;
-                                //					      right_ctrl <= zero_right;
-                                //					      alu_ctrl   <= alu_st8;
-                                //                     cc_ctrl    <= latch_cc;
-                                //				         md_ctrl    <= load_md;
-                                // 					      ea_ctrl    <= latch_ea;
-                                //					      next_state <= write8_state;
-                                //					    when "1101" => -- jsr
-                                //			            left_ctrl  <= acca_left;
-                                //				         right_ctrl <= zero_right;
-                                //				         alu_ctrl   <= alu_nop;
-                                //                     cc_ctrl    <= latch_cc;
-                                //                     md_ctrl    <= latch_md;
-                                // 					      ea_ctrl    <= latch_ea;
-                                //					      next_state <= jsr_state;
-                                //					    when "1111" =>  -- sts
-                                // 					      left_ctrl  <= sp_left;
-                                //					      right_ctrl <= zero_right;
-                                //					      alu_ctrl   <= alu_st16;
-                                //                     cc_ctrl    <= latch_cc;
-                                //				         md_ctrl    <= load_md;
-                                //					      ea_ctrl    <= latch_ea;
-                                //					      next_state <= write16_state;
-                                default :
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_nop;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_fetch_first_md;
-                                        ea_ctrl <= ea_type_latch_ea;
-                                        next_state <= state_type_fetch_state;
-                                    end
-                            endcase
-                        
-                        4'b1101, 4'b1110, 4'b1111 :		// accb
-                            case (op_code[3:0])
-                                // addd
-                                // ldd
-                                4'b0011, 4'b1100, 4'b1110 :		// ldx
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_nop;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_fetch_first_md;
-                                        // increment the effective address in case of 16 bit load
-                                        ea_ctrl <= ea_type_inc_ea;
-                                        next_state <= state_type_read16_state;
-                                    end
-                                //					    when "0111" =>   -- stab
-                                // 					      left_ctrl  <= accb_left;
-                                //					      right_ctrl <= zero_right;
-                                //					      alu_ctrl   <= alu_st8;
-                                //                     cc_ctrl    <= latch_cc;
-                                //				         md_ctrl    <= load_md;
-                                //					      ea_ctrl    <= latch_ea;
-                                //					      next_state <= write8_state;
-                                //					    when "1101" => -- std
-                                //			            left_ctrl  <= accd_left;
-                                //				         right_ctrl <= zero_right;
-                                //				         alu_ctrl   <= alu_st16;
-                                //                     cc_ctrl    <= latch_cc;
-                                //                     md_ctrl    <= load_md;
-                                // 					      ea_ctrl    <= latch_ea;
-                                //					      next_state <= write16_state;
-                                //					    when "1111" =>  -- stx
-                                // 					      left_ctrl  <= ix_left;
-                                //					      right_ctrl <= zero_right;
-                                //					      alu_ctrl   <= alu_st16;
-                                //                     cc_ctrl    <= latch_cc;
-                                //				         md_ctrl    <= load_md;
-                                //					      ea_ctrl    <= latch_ea;
-                                //					      next_state <= write16_state;
-                                default :
-                                    begin
-                                        left_ctrl <= left_type_acca_left;
-                                        right_ctrl <= right_type_zero_right;
-                                        alu_ctrl <= alu_type_alu_nop;
-                                        cc_ctrl <= cc_type_latch_cc;
-                                        md_ctrl <= md_type_fetch_first_md;
-                                        ea_ctrl <= ea_type_latch_ea;
-                                        next_state <= state_type_execute_state;
-                                    end
-                            endcase
-                        default :
-                            begin
-                                left_ctrl <= left_type_acca_left;
-                                right_ctrl <= right_type_zero_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                md_ctrl <= md_type_fetch_first_md;
-                                ea_ctrl <= ea_type_latch_ea;
-                                next_state <= state_type_fetch_state;
-                            end
-                    endcase
-                end
-            
-            state_type_read16_state :		// read second data byte from ea
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    left_ctrl <= left_type_acca_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    // idle the effective address
-                    ea_ctrl <= ea_type_latch_ea;
-                    // read the low byte of the 16 bit data
-                    md_ctrl <= md_type_fetch_next_md;
-                    addr_ctrl <= addr_type_read_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_fetch_state;
-                end
-            //
-            // 16 bit Write state
-            // write high byte of ALU output.
-            // EA hold address of memory to write to
-            // Advance the effective address in ALU
-            //
-            state_type_write16_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    // increment the effective address
-                    left_ctrl <= left_type_acca_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    ea_ctrl <= ea_type_inc_ea;
-                    // write the ALU hi byte to ea
-                    addr_ctrl <= addr_type_write_ad;
-                    dout_ctrl <= dout_type_md_hi_dout;
-                    next_state <= state_type_write8_state;
-                end
-            //
-            // 8 bit write
-            // Write low 8 bits of ALU output
-            //
-            state_type_write8_state :
-                begin
-                    // default registers
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // idle the ALU
-                    left_ctrl <= left_type_acca_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    // write ALU low byte output
-                    addr_ctrl <= addr_type_write_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_fetch_state;
-                end
-            
-            state_type_jmp_state :
-                begin
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // load PC with effective address
-                    left_ctrl <= left_type_acca_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    pc_ctrl <= pc_type_load_ea_pc;
-                    // idle the bus
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_fetch_state;
-                end
-            
-            state_type_jsr_state :		// JSR
-                begin
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // decrement sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_sub16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // write pc low
-                    addr_ctrl <= addr_type_push_ad;
-                    dout_ctrl <= dout_type_pc_lo_dout;
-                    next_state <= state_type_jsr1_state;
-                end
-            
-            state_type_jsr1_state :		// JSR
-                begin
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // decrement sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_sub16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // write pc hi
-                    addr_ctrl <= addr_type_push_ad;
-                    dout_ctrl <= dout_type_pc_hi_dout;
-                    next_state <= state_type_jmp_state;
-                end
-            
-            state_type_branch_state :		// Bcc
-                begin
-                    // default registers
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // calculate signed branch
-                    left_ctrl <= left_type_acca_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    pc_ctrl <= pc_type_add_ea_pc;
-                    // idle the bus
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_fetch_state;
-                end
-            
-            state_type_bsr_state :		// BSR
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // decrement sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_sub16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // write pc low
-                    addr_ctrl <= addr_type_push_ad;
-                    dout_ctrl <= dout_type_pc_lo_dout;
-                    next_state <= state_type_bsr1_state;
-                end
-            
-            state_type_bsr1_state :		// BSR
-                begin
-                    // default registers
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // decrement sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_sub16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // write pc hi
-                    addr_ctrl <= addr_type_push_ad;
-                    dout_ctrl <= dout_type_pc_hi_dout;
-                    next_state <= state_type_branch_state;
-                end
-            
-            state_type_rts_hi_state :		// RTS
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // increment the sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // read pc hi
-                    pc_ctrl <= pc_type_pull_hi_pc;
-                    addr_ctrl <= addr_type_pull_ad;
-                    dout_ctrl <= dout_type_pc_hi_dout;
-                    next_state <= state_type_rts_lo_state;
-                end
-            
-            state_type_rts_lo_state :		// RTS1
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // idle the ALU
-                    left_ctrl <= left_type_acca_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    // read pc low
-                    pc_ctrl <= pc_type_pull_lo_pc;
-                    addr_ctrl <= addr_type_pull_ad;
-                    dout_ctrl <= dout_type_pc_lo_dout;
-                    next_state <= state_type_fetch_state;
-                end
-            
-            state_type_mul_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // move acca to md
-                    left_ctrl <= left_type_acca_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_st16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    md_ctrl <= md_type_load_md;
-                    // idle bus
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_mulea_state;
-                end
-            
-            state_type_mulea_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    md_ctrl <= md_type_latch_md;
-                    // idle ALU
-                    left_ctrl <= left_type_acca_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    // move accb to ea
-                    ea_ctrl <= ea_type_load_accb_ea;
-                    // idle bus
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_muld_state;
-                end
-            
-            state_type_muld_state :
-                begin
-                    // default
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    md_ctrl <= md_type_latch_md;
-                    // clear accd
-                    left_ctrl <= left_type_acca_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_ld8;
-                    cc_ctrl <= cc_type_latch_cc;
-                    acca_ctrl <= acca_type_load_hi_acca;
-                    accb_ctrl <= accb_type_load_accb;
-                    // idle bus
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_mul0_state;
-                end
-            
-            state_type_mul0_state :
-                begin
-                    // default
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // if bit 0 of ea set, add accd to md
-                    left_ctrl <= left_type_accd_left;
-                    right_ctrl <= right_type_md_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    if (ea[0] == 1'b1)
-                    begin
-                        cc_ctrl <= cc_type_load_cc;
-                        acca_ctrl <= acca_type_load_hi_acca;
-                        accb_ctrl <= accb_type_load_accb;
-                    end
-                    else
-                    begin
-                        cc_ctrl <= cc_type_latch_cc;
-                        acca_ctrl <= acca_type_latch_acca;
-                        accb_ctrl <= accb_type_latch_accb;
-                    end
-                    md_ctrl <= md_type_shiftl_md;
-                    // idle bus
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_mul1_state;
-                end
-            
-            state_type_mul1_state :
-                begin
-                    // default
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // if bit 1 of ea set, add accd to md
-                    left_ctrl <= left_type_accd_left;
-                    right_ctrl <= right_type_md_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    if (ea[1] == 1'b1)
-                    begin
-                        cc_ctrl <= cc_type_load_cc;
-                        acca_ctrl <= acca_type_load_hi_acca;
-                        accb_ctrl <= accb_type_load_accb;
-                    end
-                    else
-                    begin
-                        cc_ctrl <= cc_type_latch_cc;
-                        acca_ctrl <= acca_type_latch_acca;
-                        accb_ctrl <= accb_type_latch_accb;
-                    end
-                    md_ctrl <= md_type_shiftl_md;
-                    // idle bus
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_mul2_state;
-                end
-            
-            state_type_mul2_state :
-                begin
-                    // default
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // if bit 2 of ea set, add accd to md
-                    left_ctrl <= left_type_accd_left;
-                    right_ctrl <= right_type_md_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    if (ea[2] == 1'b1)
-                    begin
-                        cc_ctrl <= cc_type_load_cc;
-                        acca_ctrl <= acca_type_load_hi_acca;
-                        accb_ctrl <= accb_type_load_accb;
-                    end
-                    else
-                    begin
-                        cc_ctrl <= cc_type_latch_cc;
-                        acca_ctrl <= acca_type_latch_acca;
-                        accb_ctrl <= accb_type_latch_accb;
-                    end
-                    md_ctrl <= md_type_shiftl_md;
-                    // idle bus
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_mul3_state;
-                end
-            
-            state_type_mul3_state :
-                begin
-                    // default
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // if bit 3 of ea set, add accd to md
-                    left_ctrl <= left_type_accd_left;
-                    right_ctrl <= right_type_md_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    if (ea[3] == 1'b1)
-                    begin
-                        cc_ctrl <= cc_type_load_cc;
-                        acca_ctrl <= acca_type_load_hi_acca;
-                        accb_ctrl <= accb_type_load_accb;
-                    end
-                    else
-                    begin
-                        cc_ctrl <= cc_type_latch_cc;
-                        acca_ctrl <= acca_type_latch_acca;
-                        accb_ctrl <= accb_type_latch_accb;
-                    end
-                    md_ctrl <= md_type_shiftl_md;
-                    // idle bus
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_mul4_state;
-                end
-            
-            state_type_mul4_state :
-                begin
-                    // default
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // if bit 4 of ea set, add accd to md
-                    left_ctrl <= left_type_accd_left;
-                    right_ctrl <= right_type_md_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    if (ea[4] == 1'b1)
-                    begin
-                        cc_ctrl <= cc_type_load_cc;
-                        acca_ctrl <= acca_type_load_hi_acca;
-                        accb_ctrl <= accb_type_load_accb;
-                    end
-                    else
-                    begin
-                        cc_ctrl <= cc_type_latch_cc;
-                        acca_ctrl <= acca_type_latch_acca;
-                        accb_ctrl <= accb_type_latch_accb;
-                    end
-                    md_ctrl <= md_type_shiftl_md;
-                    // idle bus
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_mul5_state;
-                end
-            
-            state_type_mul5_state :
-                begin
-                    // default
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // if bit 5 of ea set, add accd to md
-                    left_ctrl <= left_type_accd_left;
-                    right_ctrl <= right_type_md_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    if (ea[5] == 1'b1)
-                    begin
-                        cc_ctrl <= cc_type_load_cc;
-                        acca_ctrl <= acca_type_load_hi_acca;
-                        accb_ctrl <= accb_type_load_accb;
-                    end
-                    else
-                    begin
-                        cc_ctrl <= cc_type_latch_cc;
-                        acca_ctrl <= acca_type_latch_acca;
-                        accb_ctrl <= accb_type_latch_accb;
-                    end
-                    md_ctrl <= md_type_shiftl_md;
-                    // idle bus
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_mul6_state;
-                end
-            
-            state_type_mul6_state :
-                begin
-                    // default
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // if bit 6 of ea set, add accd to md
-                    left_ctrl <= left_type_accd_left;
-                    right_ctrl <= right_type_md_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    if (ea[6] == 1'b1)
-                    begin
-                        cc_ctrl <= cc_type_load_cc;
-                        acca_ctrl <= acca_type_load_hi_acca;
-                        accb_ctrl <= accb_type_load_accb;
-                    end
-                    else
-                    begin
-                        cc_ctrl <= cc_type_latch_cc;
-                        acca_ctrl <= acca_type_latch_acca;
-                        accb_ctrl <= accb_type_latch_accb;
-                    end
-                    md_ctrl <= md_type_shiftl_md;
-                    // idle bus
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_mul7_state;
-                end
-            
-            state_type_mul7_state :
-                begin
-                    // default
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // if bit 7 of ea set, add accd to md
-                    left_ctrl <= left_type_accd_left;
-                    right_ctrl <= right_type_md_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    if (ea[7] == 1'b1)
-                    begin
-                        cc_ctrl <= cc_type_load_cc;
-                        acca_ctrl <= acca_type_load_hi_acca;
-                        accb_ctrl <= accb_type_load_accb;
-                    end
-                    else
-                    begin
-                        cc_ctrl <= cc_type_latch_cc;
-                        acca_ctrl <= acca_type_latch_acca;
-                        accb_ctrl <= accb_type_latch_accb;
-                    end
-                    md_ctrl <= md_type_shiftl_md;
-                    // idle bus
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_fetch_state;
-                end
-            
-            state_type_execute_state :		// execute single operand instruction
-                begin
-                    // default
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    case (op_code[7:4])
-                        // indexed single op
-                        4'b0110, 4'b0111 :		// extended single op
-                            begin
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                pc_ctrl <= pc_type_latch_pc;
-                                iv_ctrl <= iv_type_latch_iv;
-                                ea_ctrl <= ea_type_latch_ea;
-                                // idle the bus
-                                addr_ctrl <= addr_type_idle_ad;
-                                dout_ctrl <= dout_type_md_lo_dout;
-                                left_ctrl <= left_type_md_left;
-                                case (op_code[3:0])
-                                    4'b0000 :		// neg
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_neg;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            md_ctrl <= md_type_load_md;
-                                            next_state <= state_type_write8_state;
-                                        end
-                                    4'b0011 :		// com
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_com;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            md_ctrl <= md_type_load_md;
-                                            next_state <= state_type_write8_state;
-                                        end
-                                    4'b0100 :		// lsr
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_lsr8;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            md_ctrl <= md_type_load_md;
-                                            next_state <= state_type_write8_state;
-                                        end
-                                    4'b0110 :		// ror
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_ror8;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            md_ctrl <= md_type_load_md;
-                                            next_state <= state_type_write8_state;
-                                        end
-                                    4'b0111 :		// asr
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_asr8;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            md_ctrl <= md_type_load_md;
-                                            next_state <= state_type_write8_state;
-                                        end
-                                    4'b1000 :		// asl
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_asl8;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            md_ctrl <= md_type_load_md;
-                                            next_state <= state_type_write8_state;
-                                        end
-                                    4'b1001 :		// rol
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_rol8;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            md_ctrl <= md_type_load_md;
-                                            next_state <= state_type_write8_state;
-                                        end
-                                    4'b1010 :		// dec
-                                        begin
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_dec;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            md_ctrl <= md_type_load_md;
-                                            next_state <= state_type_write8_state;
-                                        end
-                                    4'b1011 :		// undefined
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            md_ctrl <= md_type_latch_md;
-                                            next_state <= state_type_fetch_state;
-                                        end
-                                    4'b1100 :		// inc
-                                        begin
-                                            right_ctrl <= right_type_plus_one_right;
-                                            alu_ctrl <= alu_type_alu_inc;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            md_ctrl <= md_type_load_md;
-                                            next_state <= state_type_write8_state;
-                                        end
-                                    4'b1101 :		// tst
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_st8;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            md_ctrl <= md_type_latch_md;
-                                            next_state <= state_type_fetch_state;
-                                        end
-                                    4'b1110 :		// jmp
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            md_ctrl <= md_type_latch_md;
-                                            next_state <= state_type_fetch_state;
-                                        end
-                                    4'b1111 :		// clr
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_clr;
-                                            cc_ctrl <= cc_type_load_cc;
-                                            md_ctrl <= md_type_load_md;
-                                            next_state <= state_type_write8_state;
-                                        end
-                                    default :
-                                        begin
-                                            right_ctrl <= right_type_zero_right;
-                                            alu_ctrl <= alu_type_alu_nop;
-                                            cc_ctrl <= cc_type_latch_cc;
-                                            md_ctrl <= md_type_latch_md;
-                                            next_state <= state_type_fetch_state;
-                                        end
-                                endcase
-                            end
-                        
-                        default :
-                            begin
-                                left_ctrl <= left_type_accd_left;
-                                right_ctrl <= right_type_md_right;
-                                alu_ctrl <= alu_type_alu_nop;
-                                cc_ctrl <= cc_type_latch_cc;
-                                acca_ctrl <= acca_type_latch_acca;
-                                accb_ctrl <= accb_type_latch_accb;
-                                ix_ctrl <= ix_type_latch_ix;
-                                sp_ctrl <= sp_type_latch_sp;
-                                pc_ctrl <= pc_type_latch_pc;
-                                md_ctrl <= md_type_latch_md;
-                                iv_ctrl <= iv_type_latch_iv;
-                                ea_ctrl <= ea_type_latch_ea;
-                                // idle the bus
-                                addr_ctrl <= addr_type_idle_ad;
-                                dout_ctrl <= dout_type_md_lo_dout;
-                                next_state <= state_type_fetch_state;
-                            end
-                    endcase
-                end
-            
-            state_type_psha_state :
-                begin
-                    // default registers
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // decrement sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_sub16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // write acca
-                    addr_ctrl <= addr_type_push_ad;
-                    dout_ctrl <= dout_type_acca_dout;
-                    next_state <= state_type_fetch_state;
-                end
-            
-            state_type_pula_state :
-                begin
-                    // default registers
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // idle sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_latch_sp;
-                    // read acca
-                    acca_ctrl <= acca_type_pull_acca;
-                    addr_ctrl <= addr_type_pull_ad;
-                    dout_ctrl <= dout_type_acca_dout;
-                    next_state <= state_type_fetch_state;
-                end
-            
-            state_type_pshb_state :
-                begin
-                    // default registers
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // decrement sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_sub16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // write accb
-                    addr_ctrl <= addr_type_push_ad;
-                    dout_ctrl <= dout_type_accb_dout;
-                    next_state <= state_type_fetch_state;
-                end
-            
-            state_type_pulb_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // idle sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_latch_sp;
-                    // read accb
-                    accb_ctrl <= accb_type_pull_accb;
-                    addr_ctrl <= addr_type_pull_ad;
-                    dout_ctrl <= dout_type_accb_dout;
-                    next_state <= state_type_fetch_state;
-                end
-            
-            state_type_pshx_lo_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // decrement sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_sub16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // write ix low
-                    addr_ctrl <= addr_type_push_ad;
-                    dout_ctrl <= dout_type_ix_lo_dout;
-                    next_state <= state_type_pshx_hi_state;
-                end
-            
-            state_type_pshx_hi_state :
-                begin
-                    // default registers
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // decrement sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_sub16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // write ix hi
-                    addr_ctrl <= addr_type_push_ad;
-                    dout_ctrl <= dout_type_ix_hi_dout;
-                    next_state <= state_type_fetch_state;
-                end
-            
-            state_type_pulx_hi_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // increment sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // pull ix hi
-                    ix_ctrl <= ix_type_pull_hi_ix;
-                    addr_ctrl <= addr_type_pull_ad;
-                    dout_ctrl <= dout_type_ix_hi_dout;
-                    next_state <= state_type_pulx_lo_state;
-                end
-            
-            state_type_pulx_lo_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // idle sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_latch_sp;
-                    // read ix low
-                    ix_ctrl <= ix_type_pull_lo_ix;
-                    addr_ctrl <= addr_type_pull_ad;
-                    dout_ctrl <= dout_type_ix_lo_dout;
-                    next_state <= state_type_fetch_state;
-                end
-            
-            //
-            // return from interrupt
-            // enter here from bogus interrupts
-            //
-            state_type_rti_state :
-                begin
-                    // default registers
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // increment sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    sp_ctrl <= sp_type_load_sp;
-                    // idle address bus
-                    cc_ctrl <= cc_type_latch_cc;
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_cc_dout;
-                    next_state <= state_type_rti_cc_state;
-                end
-            
-            state_type_rti_cc_state :
-                begin
-                    // default registers
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // increment sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    sp_ctrl <= sp_type_load_sp;
-                    // read cc
-                    cc_ctrl <= cc_type_pull_cc;
-                    addr_ctrl <= addr_type_pull_ad;
-                    dout_ctrl <= dout_type_cc_dout;
-                    next_state <= state_type_rti_accb_state;
-                end
-            
-            state_type_rti_accb_state :
-                begin
-                    // default registers
-                    acca_ctrl <= acca_type_latch_acca;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // increment sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // read accb
-                    accb_ctrl <= accb_type_pull_accb;
-                    addr_ctrl <= addr_type_pull_ad;
-                    dout_ctrl <= dout_type_accb_dout;
-                    next_state <= state_type_rti_acca_state;
-                end
-            
-            state_type_rti_acca_state :
-                begin
-                    // default registers
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // increment sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // read acca
-                    acca_ctrl <= acca_type_pull_acca;
-                    addr_ctrl <= addr_type_pull_ad;
-                    dout_ctrl <= dout_type_acca_dout;
-                    next_state <= state_type_rti_ixh_state;
-                end
-            
-            state_type_rti_ixh_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // increment sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // read ix hi
-                    ix_ctrl <= ix_type_pull_hi_ix;
-                    addr_ctrl <= addr_type_pull_ad;
-                    dout_ctrl <= dout_type_ix_hi_dout;
-                    next_state <= state_type_rti_ixl_state;
-                end
-            
-            state_type_rti_ixl_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // increment sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // read ix low
-                    ix_ctrl <= ix_type_pull_lo_ix;
-                    addr_ctrl <= addr_type_pull_ad;
-                    dout_ctrl <= dout_type_ix_lo_dout;
-                    next_state <= state_type_rti_pch_state;
-                end
-            
-            state_type_rti_pch_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // increment sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_add16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // pull pc hi
-                    pc_ctrl <= pc_type_pull_hi_pc;
-                    addr_ctrl <= addr_type_pull_ad;
-                    dout_ctrl <= dout_type_pc_hi_dout;
-                    next_state <= state_type_rti_pcl_state;
-                end
-            
-            state_type_rti_pcl_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // idle sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_latch_sp;
-                    // pull pc low
-                    pc_ctrl <= pc_type_pull_lo_pc;
-                    addr_ctrl <= addr_type_pull_ad;
-                    dout_ctrl <= dout_type_pc_lo_dout;
-                    next_state <= state_type_fetch_state;
-                end
-            
-            //
-            // here on interrupt
-            // iv register hold interrupt type
-            //
-            state_type_int_pcl_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // decrement sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_sub16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // write pc low
-                    addr_ctrl <= addr_type_push_ad;
-                    dout_ctrl <= dout_type_pc_lo_dout;
-                    next_state <= state_type_int_pch_state;
-                end
-            
-            state_type_int_pch_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // decrement sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_sub16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // write pc hi
-                    addr_ctrl <= addr_type_push_ad;
-                    dout_ctrl <= dout_type_pc_hi_dout;
-                    next_state <= state_type_int_ixl_state;
-                end
-            
-            state_type_int_ixl_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // decrement sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_sub16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // write ix low
-                    addr_ctrl <= addr_type_push_ad;
-                    dout_ctrl <= dout_type_ix_lo_dout;
-                    next_state <= state_type_int_ixh_state;
-                end
-            
-            state_type_int_ixh_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // decrement sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_sub16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // write ix hi
-                    addr_ctrl <= addr_type_push_ad;
-                    dout_ctrl <= dout_type_ix_hi_dout;
-                    next_state <= state_type_int_acca_state;
-                end
-            
-            state_type_int_acca_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // decrement sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_sub16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // write acca
-                    addr_ctrl <= addr_type_push_ad;
-                    dout_ctrl <= dout_type_acca_dout;
-                    next_state <= state_type_int_accb_state;
-                end
-            
-            state_type_int_accb_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // decrement sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_sub16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // write accb
-                    addr_ctrl <= addr_type_push_ad;
-                    dout_ctrl <= dout_type_accb_dout;
-                    next_state <= state_type_int_cc_state;
-                end
-            
-            state_type_int_cc_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // decrement sp
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_sub16;
-                    cc_ctrl <= cc_type_latch_cc;
-                    sp_ctrl <= sp_type_load_sp;
-                    // write cc
-                    addr_ctrl <= addr_type_push_ad;
-                    dout_ctrl <= dout_type_cc_dout;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    //
-                    // nmi is edge triggered
-                    // nmi_req is cleared when nmi goes low.
-                    //
-                    if (nmi_req == 1'b1)
-                    begin
-                        iv_ctrl <= iv_type_nmi_iv;
-                        next_state <= state_type_vect_hi_state;
-                    end
-                    else
-                        //
-                        // IRQ is level sensitive
-                        //
-                        if ((irq == 1'b1) & (cc[IBIT] == 1'b0))
-                        begin
-                            iv_ctrl <= iv_type_irq_iv;
-                            next_state <= state_type_int_mask_state;
-                        end
-                        else
-                            case (op_code)
-                                8'b00111110 :		// WAI (wait for interrupt)
-                                    begin
-                                        iv_ctrl <= iv_type_latch_iv;
-                                        next_state <= state_type_int_wai_state;
-                                    end
-                                8'b00111111 :		// SWI (Software interrupt)
-                                    begin
-                                        iv_ctrl <= iv_type_swi_iv;
-                                        next_state <= state_type_vect_hi_state;
-                                    end
-                                default :		// bogus interrupt (return)
-                                    begin
-                                        iv_ctrl <= iv_type_latch_iv;
-                                        next_state <= state_type_rti_state;
-                                    end
-                            endcase
-                end
-            
-            state_type_int_wai_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    op_ctrl <= op_type_latch_op;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // enable interrupts
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_plus_one_right;
-                    alu_ctrl <= alu_type_alu_cli;
-                    cc_ctrl <= cc_type_load_cc;
-                    sp_ctrl <= sp_type_latch_sp;
-                    // idle bus
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_cc_dout;
-                    if ((nmi_req == 1'b1) & (nmi_ack == 1'b0))
-                    begin
-                        iv_ctrl <= iv_type_nmi_iv;
-                        nmi_ctrl <= nmi_type_set_nmi;
-                        next_state <= state_type_vect_hi_state;
-                    end
-                    else
-                    begin
-                        //
-                        // nmi request is not cleared until nmi input goes low
-                        //
-                        if ((nmi_req == 1'b0) & (nmi_ack == 1'b1))
-                            nmi_ctrl <= nmi_type_reset_nmi;
-                        else
-                            nmi_ctrl <= nmi_type_latch_nmi;
-                        //
-                        // IRQ is level sensitive
-                        //
-                        if ((irq == 1'b1) & (cc[IBIT] == 1'b0))
-                        begin
-                            iv_ctrl <= iv_type_irq_iv;
-                            next_state <= state_type_int_mask_state;
-                        end
-                        else
-                        begin
-                            iv_ctrl <= iv_type_latch_iv;
-                            next_state <= state_type_int_wai_state;
-                        end
-                    end
-                end
-            
-            state_type_int_mask_state :
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // Mask IRQ
-                    left_ctrl <= left_type_sp_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_sei;
-                    cc_ctrl <= cc_type_load_cc;
-                    sp_ctrl <= sp_type_latch_sp;
-                    // idle bus cycle
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_vect_hi_state;
-                end
-            
-            state_type_halt_state :		// halt CPU.
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // do nothing in ALU
-                    left_ctrl <= left_type_acca_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    // idle bus cycle
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    if (halt == 1'b1)
-                        next_state <= state_type_halt_state;
-                    else
-                        next_state <= state_type_fetch_state;
-                end
-            
-            default :		// error state halt on undefine states
-                begin
-                    // default
-                    acca_ctrl <= acca_type_latch_acca;
-                    accb_ctrl <= accb_type_latch_accb;
-                    ix_ctrl <= ix_type_latch_ix;
-                    sp_ctrl <= sp_type_latch_sp;
-                    pc_ctrl <= pc_type_latch_pc;
-                    md_ctrl <= md_type_latch_md;
-                    iv_ctrl <= iv_type_latch_iv;
-                    op_ctrl <= op_type_latch_op;
-                    nmi_ctrl <= nmi_type_latch_nmi;
-                    ea_ctrl <= ea_type_latch_ea;
-                    // do nothing in ALU
-                    left_ctrl <= left_type_acca_left;
-                    right_ctrl <= right_type_zero_right;
-                    alu_ctrl <= alu_type_alu_nop;
-                    cc_ctrl <= cc_type_latch_cc;
-                    // idle bus cycle
-                    addr_ctrl <= addr_type_idle_ad;
-                    dout_ctrl <= dout_type_md_lo_dout;
-                    next_state <= state_type_error_state;
-                end
-        endcase
-    
-    //------------------------------
-    //
-    // state machine
-    //
-    //------------------------------
-    
-    
-    always @(negedge clk or rst or state or hold)
-    begin: change_state
-        
-        begin
-            if (rst == 1'b1)
-                state <= state_type_reset_state;
-            else if (hold == 1'b1)
-                state <= state;
-            else
-                state <= next_state;
+        ST_RESET: begin
+            op_ctrl=OP_RESET; acca_ctrl=ACCA_RESET; accb_ctrl=ACCB_RESET;
+            ix_ctrl=IX_RESET; sp_ctrl=SP_RESET; pc_ctrl=PC_RESET;
+            ea_ctrl=EA_RESET; md_ctrl=MD_RESET; iv_ctrl=IV_RESET; nmi_ctrl=NMI_RESET;
+            cc_ctrl=CC_RESET;
+            next_state = ST_VECT_HI;
         end
+
+        ST_VECT_HI: begin
+            pc_ctrl    = PC_PULL_HI;
+            addr_ctrl  = AD_INTH;
+            dout_ctrl  = DO_PC_HI;
+            next_state = ST_VECT_LO;
+        end
+
+        ST_VECT_LO: begin
+            pc_ctrl    = PC_PULL_LO;
+            addr_ctrl  = AD_INTL;
+            dout_ctrl  = DO_PC_LO;
+            next_state = ST_FETCH;
+        end
+
+        ST_FETCH: begin
+            op_ctrl    = OP_FETCH;
+            ea_ctrl    = EA_RESET;
+            addr_ctrl  = AD_FETCH;
+            dout_ctrl  = DO_MD_LO;
+
+            // ALU dispatch on previous opcode
+            case (op_code[7:4])
+                4'b0000, 4'b0001, 4'b0010, 4'b0011,
+                4'b0100, 4'b0101, 4'b0110, 4'b0111: begin
+                    // idle ALU
+                end
+
+                4'b1000, 4'b1001, 4'b1010, 4'b1011: begin
+                    case (op_code[3:0])
+                        4'b0000: begin left_ctrl=LEFT_ACCA; right_ctrl=RIGHT_MD; alu_ctrl=ALU_SUB8;  cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD;    end
+                        4'b0001: begin left_ctrl=LEFT_ACCA; right_ctrl=RIGHT_MD; alu_ctrl=ALU_SUB8;  cc_ctrl=CC_LOAD;                          end
+                        4'b0010: begin left_ctrl=LEFT_ACCA; right_ctrl=RIGHT_MD; alu_ctrl=ALU_SBC;   cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD;    end
+                        4'b0011: begin left_ctrl=LEFT_ACCD; right_ctrl=RIGHT_MD; alu_ctrl=ALU_SUB16; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD_HI; accb_ctrl=ACCB_LOAD; end
+                        4'b0100: begin left_ctrl=LEFT_ACCA; right_ctrl=RIGHT_MD; alu_ctrl=ALU_AND;   cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD;    end
+                        4'b0101: begin left_ctrl=LEFT_ACCA; right_ctrl=RIGHT_MD; alu_ctrl=ALU_AND;   cc_ctrl=CC_LOAD;                          end
+                        4'b0110: begin left_ctrl=LEFT_ACCA; right_ctrl=RIGHT_MD; alu_ctrl=ALU_LD8;   cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD;    end
+                        4'b0111: begin left_ctrl=LEFT_ACCA; right_ctrl=RIGHT_MD; alu_ctrl=ALU_ST8;   cc_ctrl=CC_LOAD;                          end
+                        4'b1000: begin left_ctrl=LEFT_ACCA; right_ctrl=RIGHT_MD; alu_ctrl=ALU_EOR;   cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD;    end
+                        4'b1001: begin left_ctrl=LEFT_ACCA; right_ctrl=RIGHT_MD; alu_ctrl=ALU_ADC;   cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD;    end
+                        4'b1010: begin left_ctrl=LEFT_ACCA; right_ctrl=RIGHT_MD; alu_ctrl=ALU_ORA;   cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD;    end
+                        4'b1011: begin left_ctrl=LEFT_ACCA; right_ctrl=RIGHT_MD; alu_ctrl=ALU_ADD8;  cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD;    end
+                        4'b1100: begin left_ctrl=LEFT_IX;   right_ctrl=RIGHT_MD; alu_ctrl=ALU_CPX;   cc_ctrl=CC_LOAD;                          end
+                        4'b1101: begin left_ctrl=LEFT_ACCA; right_ctrl=RIGHT_MD; alu_ctrl=ALU_NOP;                                              end
+                        4'b1110: begin left_ctrl=LEFT_SP;   right_ctrl=RIGHT_MD; alu_ctrl=ALU_LD16;  cc_ctrl=CC_LOAD; sp_ctrl=SP_LOAD;        end
+                        4'b1111: begin left_ctrl=LEFT_SP;   right_ctrl=RIGHT_MD; alu_ctrl=ALU_ST16;  cc_ctrl=CC_LOAD;                          end
+                        default: begin left_ctrl=LEFT_ACCA; right_ctrl=RIGHT_MD; alu_ctrl=ALU_NOP;                                              end
+                    endcase
+                end
+
+                4'b1100, 4'b1101, 4'b1110, 4'b1111: begin
+                    case (op_code[3:0])
+                        4'b0000: begin left_ctrl=LEFT_ACCB; right_ctrl=RIGHT_MD; alu_ctrl=ALU_SUB8;  cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD;    end
+                        4'b0001: begin left_ctrl=LEFT_ACCB; right_ctrl=RIGHT_MD; alu_ctrl=ALU_SUB8;  cc_ctrl=CC_LOAD;                          end
+                        4'b0010: begin left_ctrl=LEFT_ACCB; right_ctrl=RIGHT_MD; alu_ctrl=ALU_SBC;   cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD;    end
+                        4'b0011: begin left_ctrl=LEFT_ACCD; right_ctrl=RIGHT_MD; alu_ctrl=ALU_ADD16; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD_HI; accb_ctrl=ACCB_LOAD; end
+                        4'b0100: begin left_ctrl=LEFT_ACCB; right_ctrl=RIGHT_MD; alu_ctrl=ALU_AND;   cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD;    end
+                        4'b0101: begin left_ctrl=LEFT_ACCB; right_ctrl=RIGHT_MD; alu_ctrl=ALU_AND;   cc_ctrl=CC_LOAD;                          end
+                        4'b0110: begin left_ctrl=LEFT_ACCB; right_ctrl=RIGHT_MD; alu_ctrl=ALU_LD8;   cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD;    end
+                        4'b0111: begin left_ctrl=LEFT_ACCB; right_ctrl=RIGHT_MD; alu_ctrl=ALU_ST8;   cc_ctrl=CC_LOAD;                          end
+                        4'b1000: begin left_ctrl=LEFT_ACCB; right_ctrl=RIGHT_MD; alu_ctrl=ALU_EOR;   cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD;    end
+                        4'b1001: begin left_ctrl=LEFT_ACCB; right_ctrl=RIGHT_MD; alu_ctrl=ALU_ADC;   cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD;    end
+                        4'b1010: begin left_ctrl=LEFT_ACCB; right_ctrl=RIGHT_MD; alu_ctrl=ALU_ORA;   cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD;    end
+                        4'b1011: begin left_ctrl=LEFT_ACCB; right_ctrl=RIGHT_MD; alu_ctrl=ALU_ADD8;  cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD;    end
+                        4'b1100: begin left_ctrl=LEFT_ACCD; right_ctrl=RIGHT_MD; alu_ctrl=ALU_LD16;  cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD_HI; accb_ctrl=ACCB_LOAD; end
+                        4'b1101: begin left_ctrl=LEFT_ACCD; right_ctrl=RIGHT_MD; alu_ctrl=ALU_ST16;  cc_ctrl=CC_LOAD;                          end
+                        4'b1110: begin left_ctrl=LEFT_IX;   right_ctrl=RIGHT_MD; alu_ctrl=ALU_LD16;  cc_ctrl=CC_LOAD; ix_ctrl=IX_LOAD;        end
+                        4'b1111: begin left_ctrl=LEFT_IX;   right_ctrl=RIGHT_MD; alu_ctrl=ALU_ST16;  cc_ctrl=CC_LOAD;                          end
+                        default: begin left_ctrl=LEFT_ACCB; right_ctrl=RIGHT_MD; alu_ctrl=ALU_NOP;                                              end
+                    endcase
+                end
+
+                default: begin
+                    left_ctrl=LEFT_ACCD; right_ctrl=RIGHT_MD; alu_ctrl=ALU_NOP;
+                end
+            endcase
+
+            // Interrupt / halt arbitration
+            if (halt) begin
+                pc_ctrl    = PC_LATCH;
+                nmi_ctrl   = NMI_LATCH;
+                next_state = ST_HALT;
+            end else if (nmi_req & ~nmi_ack) begin
+                pc_ctrl    = PC_LATCH;
+                nmi_ctrl   = NMI_SET;
+                next_state = ST_INT_PCL;
+            end else begin
+                if (~nmi_req & nmi_ack) nmi_ctrl = NMI_RESET;
+                else                    nmi_ctrl = NMI_LATCH;
+
+                if (irq & ~cc[IBIT]) begin
+                    pc_ctrl    = PC_LATCH;
+                    next_state = ST_INT_PCL;
+                end else begin
+                    pc_ctrl    = PC_INC;
+                    next_state = ST_DECODE;
+                end
+            end
+        end
+
+        ST_DECODE: begin
+            ea_ctrl    = EA_FETCH_FIRST;
+            addr_ctrl  = AD_FETCH;
+            dout_ctrl  = DO_MD_LO;
+
+            case (op_code[7:4])
+            4'b0000: begin
+                md_ctrl = MD_FETCH_FIRST;
+                case (op_code[3:0])
+                    4'b0001: begin alu_ctrl=ALU_NOP; end
+                    4'b0100: begin left_ctrl=LEFT_ACCD; alu_ctrl=ALU_LSR16; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD_HI; accb_ctrl=ACCB_LOAD; end
+                    4'b0101: begin left_ctrl=LEFT_ACCD; alu_ctrl=ALU_LSL16; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD_HI; accb_ctrl=ACCB_LOAD; end
+                    4'b0110: begin alu_ctrl=ALU_TAP;   cc_ctrl=CC_LOAD; end
+                    4'b0111: begin alu_ctrl=ALU_TPA;   acca_ctrl=ACCA_LOAD; end
+                    4'b1000: begin left_ctrl=LEFT_IX; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_INX; cc_ctrl=CC_LOAD; ix_ctrl=IX_LOAD; end
+                    4'b1001: begin left_ctrl=LEFT_IX; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_DEX; cc_ctrl=CC_LOAD; ix_ctrl=IX_LOAD; end
+                    4'b1010: begin alu_ctrl=ALU_CLV; cc_ctrl=CC_LOAD; end
+                    4'b1011: begin alu_ctrl=ALU_SEV; cc_ctrl=CC_LOAD; end
+                    4'b1100: begin alu_ctrl=ALU_CLC; cc_ctrl=CC_LOAD; end
+                    4'b1101: begin alu_ctrl=ALU_SEC; cc_ctrl=CC_LOAD; end
+                    4'b1110: begin alu_ctrl=ALU_CLI; cc_ctrl=CC_LOAD; end
+                    4'b1111: begin alu_ctrl=ALU_SEI; cc_ctrl=CC_LOAD; end
+                    default: begin alu_ctrl=ALU_NOP; end
+                endcase
+                next_state = ST_FETCH;
+            end
+
+            4'b0001: begin
+                md_ctrl  = MD_FETCH_FIRST;
+                left_ctrl = LEFT_ACCA; right_ctrl = RIGHT_ACCB;
+                case (op_code[3:0])
+                    4'b0000: begin alu_ctrl=ALU_SUB8; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
+                    4'b0001: begin alu_ctrl=ALU_SUB8; cc_ctrl=CC_LOAD;                       end
+                    4'b0110: begin alu_ctrl=ALU_ST8;  cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD; end
+                    4'b0111: begin alu_ctrl=ALU_LD8;  cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
+                    4'b1001: begin alu_ctrl=ALU_DAA;  cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
+                    4'b1011: begin alu_ctrl=ALU_ADD8; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
+                    default: begin alu_ctrl=ALU_NOP;                                        end
+                endcase
+                next_state = ST_FETCH;
+            end
+
+            4'b0010: begin
+                md_ctrl = MD_FETCH_FIRST;
+                pc_ctrl = PC_INC;
+                case (op_code[3:0])
+                    4'b0000: next_state = ST_BRANCH;
+                    4'b0001: next_state = ST_FETCH;
+                    4'b0010: next_state = (~(cc[CBIT]|cc[ZBIT])) ? ST_BRANCH : ST_FETCH;
+                    4'b0011: next_state = ( (cc[CBIT]|cc[ZBIT])) ? ST_BRANCH : ST_FETCH;
+                    4'b0100: next_state = (~cc[CBIT]) ? ST_BRANCH : ST_FETCH;
+                    4'b0101: next_state = ( cc[CBIT]) ? ST_BRANCH : ST_FETCH;
+                    4'b0110: next_state = (~cc[ZBIT]) ? ST_BRANCH : ST_FETCH;
+                    4'b0111: next_state = ( cc[ZBIT]) ? ST_BRANCH : ST_FETCH;
+                    4'b1000: next_state = (~cc[VBIT]) ? ST_BRANCH : ST_FETCH;
+                    4'b1001: next_state = ( cc[VBIT]) ? ST_BRANCH : ST_FETCH;
+                    4'b1010: next_state = (~cc[NBIT]) ? ST_BRANCH : ST_FETCH;
+                    4'b1011: next_state = ( cc[NBIT]) ? ST_BRANCH : ST_FETCH;
+                    4'b1100: next_state = (~(cc[NBIT]^cc[VBIT])) ? ST_BRANCH : ST_FETCH;
+                    4'b1101: next_state = ( (cc[NBIT]^cc[VBIT])) ? ST_BRANCH : ST_FETCH;
+                    4'b1110: next_state = (~(cc[ZBIT]|(cc[NBIT]^cc[VBIT]))) ? ST_BRANCH : ST_FETCH;
+                    4'b1111: next_state = ( (cc[ZBIT]|(cc[NBIT]^cc[VBIT]))) ? ST_BRANCH : ST_FETCH;
+                    default: next_state = ST_FETCH;
+                endcase
+            end
+
+            4'b0011: begin
+                md_ctrl = MD_FETCH_FIRST;
+                case (op_code[3:0])
+                    4'b0000: begin left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; ix_ctrl=IX_LOAD; next_state=ST_FETCH; end
+                    4'b0001: begin left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; sp_ctrl=SP_LOAD; next_state=ST_FETCH; end
+                    4'b0010: begin left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; sp_ctrl=SP_LOAD; next_state=ST_PULA;  end
+                    4'b0011: begin left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; sp_ctrl=SP_LOAD; next_state=ST_PULB;  end
+                    4'b0100: begin left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD; next_state=ST_FETCH; end
+                    4'b0101: begin left_ctrl=LEFT_IX; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD; next_state=ST_FETCH; end
+                    4'b0110: begin left_ctrl=LEFT_SP; alu_ctrl=ALU_NOP; next_state=ST_PSHA; end
+                    4'b0111: begin left_ctrl=LEFT_SP; alu_ctrl=ALU_NOP; next_state=ST_PSHB; end
+                    4'b1000: begin left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; sp_ctrl=SP_LOAD; next_state=ST_PULX_HI; end
+                    4'b1001: begin left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; sp_ctrl=SP_LOAD; next_state=ST_RTS_HI;  end
+                    4'b1010: begin left_ctrl=LEFT_IX; right_ctrl=RIGHT_ACCB; alu_ctrl=ALU_ADD16; ix_ctrl=IX_LOAD; next_state=ST_FETCH; end
+                    4'b1011: begin left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; sp_ctrl=SP_LOAD; next_state=ST_RTI_CC; end
+                    4'b1100: begin left_ctrl=LEFT_SP; alu_ctrl=ALU_NOP; next_state=ST_PSHX_LO; end
+                    4'b1101: begin left_ctrl=LEFT_ACCA; right_ctrl=RIGHT_ACCB; alu_ctrl=ALU_ADD16; next_state=ST_MUL; end
+                    4'b1110: begin left_ctrl=LEFT_SP; alu_ctrl=ALU_NOP; next_state=ST_INT_PCL; end
+                    4'b1111: begin left_ctrl=LEFT_SP; alu_ctrl=ALU_NOP; next_state=ST_INT_PCL; end
+                    default: begin left_ctrl=LEFT_SP; alu_ctrl=ALU_NOP; next_state=ST_FETCH; end
+                endcase
+            end
+
+            4'b0100: begin
+                md_ctrl = MD_FETCH_FIRST;
+                left_ctrl = LEFT_ACCA;
+                case (op_code[3:0])
+                    4'b0000: begin alu_ctrl=ALU_NEG;  cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
+                    4'b0011: begin alu_ctrl=ALU_COM;  cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
+                    4'b0100: begin alu_ctrl=ALU_LSR8; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
+                    4'b0110: begin alu_ctrl=ALU_ROR8; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
+                    4'b0111: begin alu_ctrl=ALU_ASR8; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
+                    4'b1000: begin alu_ctrl=ALU_ASL8; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
+                    4'b1001: begin alu_ctrl=ALU_ROL8; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
+                    4'b1010: begin right_ctrl=RIGHT_ONE; alu_ctrl=ALU_DEC; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
+                    4'b1100: begin right_ctrl=RIGHT_ONE; alu_ctrl=ALU_INC; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
+                    4'b1101: begin alu_ctrl=ALU_ST8;  cc_ctrl=CC_LOAD; end
+                    4'b1110: begin alu_ctrl=ALU_NOP; end
+                    4'b1111: begin alu_ctrl=ALU_CLR;  cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
+                    default: begin alu_ctrl=ALU_NOP; end
+                endcase
+                next_state = ST_FETCH;
+            end
+
+            4'b0101: begin
+                md_ctrl = MD_FETCH_FIRST;
+                left_ctrl = LEFT_ACCB;
+                case (op_code[3:0])
+                    4'b0000: begin alu_ctrl=ALU_NEG;  cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD; end
+                    4'b0011: begin alu_ctrl=ALU_COM;  cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD; end
+                    4'b0100: begin alu_ctrl=ALU_LSR8; cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD; end
+                    4'b0110: begin alu_ctrl=ALU_ROR8; cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD; end
+                    4'b0111: begin alu_ctrl=ALU_ASR8; cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD; end
+                    4'b1000: begin alu_ctrl=ALU_ASL8; cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD; end
+                    4'b1001: begin alu_ctrl=ALU_ROL8; cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD; end
+                    4'b1010: begin right_ctrl=RIGHT_ONE; alu_ctrl=ALU_DEC; cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD; end
+                    4'b1100: begin right_ctrl=RIGHT_ONE; alu_ctrl=ALU_INC; cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD; end
+                    4'b1101: begin alu_ctrl=ALU_ST8;  cc_ctrl=CC_LOAD; end
+                    4'b1110: begin alu_ctrl=ALU_NOP; end
+                    4'b1111: begin alu_ctrl=ALU_CLR;  cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD; end
+                    default: begin alu_ctrl=ALU_NOP; end
+                endcase
+                next_state = ST_FETCH;
+            end
+
+            4'b0110: begin md_ctrl=MD_FETCH_FIRST; pc_ctrl=PC_INC; next_state=ST_INDEXED; end
+            4'b0111: begin md_ctrl=MD_FETCH_FIRST; pc_ctrl=PC_INC; next_state=ST_EXTENDED; end
+
+            4'b1000: begin
+                md_ctrl=MD_FETCH_FIRST; pc_ctrl=PC_INC;
+                case (op_code[3:0])
+                    4'b0011, 4'b1100, 4'b1110: next_state=ST_IMM16;
+                    4'b1101: next_state=ST_BSR;
+                    default: next_state=ST_FETCH;
+                endcase
+            end
+
+            4'b1001: begin
+                pc_ctrl=PC_INC;
+                case (op_code[3:0])
+                    4'b0111: begin left_ctrl=LEFT_ACCA; alu_ctrl=ALU_ST8;  md_ctrl=MD_LOAD; next_state=ST_WRITE8;  end
+                    4'b1111: begin left_ctrl=LEFT_SP;   alu_ctrl=ALU_ST16; md_ctrl=MD_LOAD; next_state=ST_WRITE16; end
+                    4'b1101: begin alu_ctrl=ALU_NOP; md_ctrl=MD_FETCH_FIRST; next_state=ST_JSR; end
+                    default: begin alu_ctrl=ALU_NOP; md_ctrl=MD_FETCH_FIRST; next_state=ST_READ8; end
+                endcase
+            end
+
+            4'b1010: begin md_ctrl=MD_FETCH_FIRST; pc_ctrl=PC_INC; next_state=ST_INDEXED;  end
+            4'b1011: begin md_ctrl=MD_FETCH_FIRST; pc_ctrl=PC_INC; next_state=ST_EXTENDED; end
+
+            4'b1100: begin
+                md_ctrl=MD_FETCH_FIRST; pc_ctrl=PC_INC;
+                case (op_code[3:0])
+                    4'b0011, 4'b1100, 4'b1110: next_state=ST_IMM16;
+                    default: next_state=ST_FETCH;
+                endcase
+            end
+
+            4'b1101: begin
+                pc_ctrl=PC_INC;
+                case (op_code[3:0])
+                    4'b0111: begin left_ctrl=LEFT_ACCB; alu_ctrl=ALU_ST8;  md_ctrl=MD_LOAD; next_state=ST_WRITE8;  end
+                    4'b1101: begin left_ctrl=LEFT_ACCD; alu_ctrl=ALU_ST16; md_ctrl=MD_LOAD; next_state=ST_WRITE16; end
+                    4'b1111: begin left_ctrl=LEFT_IX;   alu_ctrl=ALU_ST16; md_ctrl=MD_LOAD; next_state=ST_WRITE16; end
+                    default: begin alu_ctrl=ALU_NOP; md_ctrl=MD_FETCH_FIRST; next_state=ST_READ8; end
+                endcase
+            end
+
+            4'b1110: begin md_ctrl=MD_FETCH_FIRST; pc_ctrl=PC_INC; next_state=ST_INDEXED;  end
+            4'b1111: begin md_ctrl=MD_FETCH_FIRST; pc_ctrl=PC_INC; next_state=ST_EXTENDED; end
+
+            default: begin md_ctrl=MD_FETCH_FIRST; next_state=ST_FETCH; end
+            endcase
+        end
+
+        ST_IMM16: begin
+            pc_ctrl    = PC_INC;
+            md_ctrl    = MD_FETCH_NEXT;
+            addr_ctrl  = AD_FETCH;
+            dout_ctrl  = DO_MD_LO;
+            next_state = ST_FETCH;
+        end
+
+        ST_INDEXED: begin
+            ea_ctrl    = EA_ADD_IX;
+            addr_ctrl  = AD_IDLE;
+            dout_ctrl  = DO_MD_LO;
+            case (op_code[7:4])
+                4'b0110: begin
+                    case (op_code[3:0])
+                        4'b1011: next_state = ST_FETCH;
+                        4'b1110: next_state = ST_JMP;
+                        default: next_state = ST_READ8;
+                    endcase
+                end
+                4'b1010: begin
+                    case (op_code[3:0])
+                        4'b0111: begin left_ctrl=LEFT_ACCA; alu_ctrl=ALU_ST8;  md_ctrl=MD_LOAD;  next_state=ST_WRITE8;  end
+                        4'b1101: begin alu_ctrl=ALU_NOP; next_state=ST_JSR; end
+                        4'b1111: begin left_ctrl=LEFT_SP;   alu_ctrl=ALU_ST16; md_ctrl=MD_LOAD;  next_state=ST_WRITE16; end
+                        default: begin alu_ctrl=ALU_NOP; next_state=ST_READ8; end
+                    endcase
+                end
+                4'b1110: begin
+                    case (op_code[3:0])
+                        4'b0111: begin left_ctrl=LEFT_ACCB; alu_ctrl=ALU_ST8;  md_ctrl=MD_LOAD;  next_state=ST_WRITE8;  end
+                        4'b1101: begin left_ctrl=LEFT_ACCD; alu_ctrl=ALU_ST16; md_ctrl=MD_LOAD;  next_state=ST_WRITE16; end
+                        4'b1111: begin left_ctrl=LEFT_IX;   alu_ctrl=ALU_ST16; md_ctrl=MD_LOAD;  next_state=ST_WRITE16; end
+                        default: begin alu_ctrl=ALU_NOP; next_state=ST_READ8; end
+                    endcase
+                end
+                default: next_state = ST_FETCH;
+            endcase
+        end
+
+        ST_EXTENDED: begin
+            pc_ctrl    = PC_INC;
+            ea_ctrl    = EA_FETCH_NEXT;
+            addr_ctrl  = AD_FETCH;
+            dout_ctrl  = DO_MD_LO;
+            case (op_code[7:4])
+                4'b0111: begin
+                    case (op_code[3:0])
+                        4'b1011: next_state = ST_FETCH;
+                        4'b1110: next_state = ST_JMP;
+                        default: next_state = ST_READ8;
+                    endcase
+                end
+                4'b1011: begin
+                    case (op_code[3:0])
+                        4'b0111: begin left_ctrl=LEFT_ACCA; alu_ctrl=ALU_ST8;  md_ctrl=MD_LOAD;  next_state=ST_WRITE8;  end
+                        4'b1101: begin alu_ctrl=ALU_NOP; next_state=ST_JSR; end
+                        4'b1111: begin left_ctrl=LEFT_SP;   alu_ctrl=ALU_ST16; md_ctrl=MD_LOAD;  next_state=ST_WRITE16; end
+                        default: begin alu_ctrl=ALU_NOP; next_state=ST_READ8; end
+                    endcase
+                end
+                4'b1111: begin
+                    case (op_code[3:0])
+                        4'b0111: begin left_ctrl=LEFT_ACCB; alu_ctrl=ALU_ST8;  md_ctrl=MD_LOAD;  next_state=ST_WRITE8;  end
+                        4'b1101: begin left_ctrl=LEFT_ACCD; alu_ctrl=ALU_ST16; md_ctrl=MD_LOAD;  next_state=ST_WRITE16; end
+                        4'b1111: begin left_ctrl=LEFT_IX;   alu_ctrl=ALU_ST16; md_ctrl=MD_LOAD;  next_state=ST_WRITE16; end
+                        default: begin alu_ctrl=ALU_NOP; next_state=ST_READ8; end
+                    endcase
+                end
+                default: next_state = ST_FETCH;
+            endcase
+        end
+
+        ST_READ8: begin
+            addr_ctrl = AD_READ;
+            dout_ctrl = DO_MD_LO;
+            md_ctrl   = MD_FETCH_FIRST;
+            case (op_code[7:4])
+                4'b0110, 4'b0111: next_state = ST_EXECUTE;
+                4'b1001, 4'b1010, 4'b1011: begin
+                    case (op_code[3:0])
+                        4'b0011, 4'b1110, 4'b1100: begin ea_ctrl = EA_INC; next_state = ST_READ16; end
+                        default: next_state = ST_FETCH;
+                    endcase
+                end
+                4'b1101, 4'b1110, 4'b1111: begin
+                    case (op_code[3:0])
+                        4'b0011, 4'b1100, 4'b1110: begin ea_ctrl = EA_INC; next_state = ST_READ16; end
+                        default: next_state = ST_EXECUTE;
+                    endcase
+                end
+                default: next_state = ST_FETCH;
+            endcase
+        end
+
+        ST_READ16: begin
+            md_ctrl    = MD_FETCH_NEXT;
+            addr_ctrl  = AD_READ;
+            dout_ctrl  = DO_MD_LO;
+            next_state = ST_FETCH;
+        end
+
+        ST_WRITE16: begin
+            ea_ctrl    = EA_INC;
+            addr_ctrl  = AD_WRITE;
+            dout_ctrl  = DO_MD_HI;
+            next_state = ST_WRITE8;
+        end
+
+        ST_WRITE8: begin
+            addr_ctrl  = AD_WRITE;
+            dout_ctrl  = DO_MD_LO;
+            next_state = ST_FETCH;
+        end
+
+        ST_JMP: begin
+            pc_ctrl    = PC_LOAD_EA;
+            addr_ctrl  = AD_IDLE;
+            dout_ctrl  = DO_MD_LO;
+            next_state = ST_FETCH;
+        end
+
+        ST_JSR: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_PUSH; dout_ctrl=DO_PC_LO;
+            next_state = ST_JSR1;
+        end
+
+        ST_JSR1: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_PUSH; dout_ctrl=DO_PC_HI;
+            next_state = ST_JMP;
+        end
+
+        ST_BRANCH: begin
+            pc_ctrl    = PC_ADD_EA;
+            addr_ctrl  = AD_IDLE;
+            dout_ctrl  = DO_MD_LO;
+            next_state = ST_FETCH;
+        end
+
+        ST_BSR: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_PUSH; dout_ctrl=DO_PC_LO;
+            next_state = ST_BSR1;
+        end
+
+        ST_BSR1: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_PUSH; dout_ctrl=DO_PC_HI;
+            next_state = ST_BRANCH;
+        end
+
+        ST_RTS_HI: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; sp_ctrl=SP_LOAD;
+            pc_ctrl=PC_PULL_HI;
+            addr_ctrl=AD_PULL; dout_ctrl=DO_PC_HI;
+            next_state = ST_RTS_LO;
+        end
+
+        ST_RTS_LO: begin
+            pc_ctrl=PC_PULL_LO;
+            addr_ctrl=AD_PULL; dout_ctrl=DO_PC_LO;
+            next_state = ST_FETCH;
+        end
+
+        // MUL chain
+        ST_MUL: begin
+            left_ctrl=LEFT_ACCA; alu_ctrl=ALU_ST16; md_ctrl=MD_LOAD;
+            addr_ctrl=AD_IDLE; dout_ctrl=DO_MD_LO;
+            next_state = ST_MULEA;
+        end
+        ST_MULEA: begin
+            ea_ctrl=EA_LOAD_ACCB;
+            addr_ctrl=AD_IDLE; dout_ctrl=DO_MD_LO;
+            next_state = ST_MULD;
+        end
+        ST_MULD: begin
+            alu_ctrl=ALU_LD8; acca_ctrl=ACCA_LOAD_HI; accb_ctrl=ACCB_LOAD;
+            addr_ctrl=AD_IDLE; dout_ctrl=DO_MD_LO;
+            next_state = ST_MUL0;
+        end
+        ST_MUL0, ST_MUL1, ST_MUL2, ST_MUL3,
+        ST_MUL4, ST_MUL5, ST_MUL6, ST_MUL7: begin
+            left_ctrl=LEFT_ACCD; right_ctrl=RIGHT_MD; alu_ctrl=ALU_ADD16;
+            md_ctrl=MD_SHIFTL;
+            addr_ctrl=AD_IDLE; dout_ctrl=DO_MD_LO;
+            case (state)
+                ST_MUL0: mul_bit = ea[0];
+                ST_MUL1: mul_bit = ea[1];
+                ST_MUL2: mul_bit = ea[2];
+                ST_MUL3: mul_bit = ea[3];
+                ST_MUL4: mul_bit = ea[4];
+                ST_MUL5: mul_bit = ea[5];
+                ST_MUL6: mul_bit = ea[6];
+                ST_MUL7: mul_bit = ea[7];
+                default: mul_bit = 1'b0;
+            endcase
+            if (mul_bit) begin
+                cc_ctrl   = CC_LOAD;
+                acca_ctrl = ACCA_LOAD_HI;
+                accb_ctrl = ACCB_LOAD;
+            end
+            case (state)
+                ST_MUL0: next_state = ST_MUL1;
+                ST_MUL1: next_state = ST_MUL2;
+                ST_MUL2: next_state = ST_MUL3;
+                ST_MUL3: next_state = ST_MUL4;
+                ST_MUL4: next_state = ST_MUL5;
+                ST_MUL5: next_state = ST_MUL6;
+                ST_MUL6: next_state = ST_MUL7;
+                ST_MUL7: next_state = ST_FETCH;
+                default: next_state = ST_FETCH;
+            endcase
+        end
+
+        ST_EXECUTE: begin
+            addr_ctrl=AD_IDLE; dout_ctrl=DO_MD_LO;
+            case (op_code[7:4])
+                4'b0110, 4'b0111: begin
+                    left_ctrl = LEFT_MD;
+                    case (op_code[3:0])
+                        4'b0000: begin alu_ctrl=ALU_NEG;  cc_ctrl=CC_LOAD; md_ctrl=MD_LOAD; next_state=ST_WRITE8; end
+                        4'b0011: begin alu_ctrl=ALU_COM;  cc_ctrl=CC_LOAD; md_ctrl=MD_LOAD; next_state=ST_WRITE8; end
+                        4'b0100: begin alu_ctrl=ALU_LSR8; cc_ctrl=CC_LOAD; md_ctrl=MD_LOAD; next_state=ST_WRITE8; end
+                        4'b0110: begin alu_ctrl=ALU_ROR8; cc_ctrl=CC_LOAD; md_ctrl=MD_LOAD; next_state=ST_WRITE8; end
+                        4'b0111: begin alu_ctrl=ALU_ASR8; cc_ctrl=CC_LOAD; md_ctrl=MD_LOAD; next_state=ST_WRITE8; end
+                        4'b1000: begin alu_ctrl=ALU_ASL8; cc_ctrl=CC_LOAD; md_ctrl=MD_LOAD; next_state=ST_WRITE8; end
+                        4'b1001: begin alu_ctrl=ALU_ROL8; cc_ctrl=CC_LOAD; md_ctrl=MD_LOAD; next_state=ST_WRITE8; end
+                        4'b1010: begin right_ctrl=RIGHT_ONE; alu_ctrl=ALU_DEC; cc_ctrl=CC_LOAD; md_ctrl=MD_LOAD; next_state=ST_WRITE8; end
+                        4'b1011: begin alu_ctrl=ALU_NOP; next_state=ST_FETCH; end
+                        4'b1100: begin right_ctrl=RIGHT_ONE; alu_ctrl=ALU_INC; cc_ctrl=CC_LOAD; md_ctrl=MD_LOAD; next_state=ST_WRITE8; end
+                        4'b1101: begin alu_ctrl=ALU_ST8;  cc_ctrl=CC_LOAD; next_state=ST_FETCH; end
+                        4'b1110: begin alu_ctrl=ALU_NOP; next_state=ST_FETCH; end
+                        4'b1111: begin alu_ctrl=ALU_CLR;  cc_ctrl=CC_LOAD; md_ctrl=MD_LOAD; next_state=ST_WRITE8; end
+                        default: begin alu_ctrl=ALU_NOP; next_state=ST_FETCH; end
+                    endcase
+                end
+                default: begin
+                    left_ctrl=LEFT_ACCD; right_ctrl=RIGHT_MD; alu_ctrl=ALU_NOP;
+                    next_state = ST_FETCH;
+                end
+            endcase
+        end
+
+        // Stack pushes / pulls
+        ST_PSHA: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_PUSH; dout_ctrl=DO_ACCA;
+            next_state = ST_FETCH;
+        end
+        ST_PULA: begin
+            acca_ctrl=ACCA_PULL;
+            addr_ctrl=AD_PULL; dout_ctrl=DO_ACCA;
+            next_state = ST_FETCH;
+        end
+        ST_PSHB: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_PUSH; dout_ctrl=DO_ACCB;
+            next_state = ST_FETCH;
+        end
+        ST_PULB: begin
+            accb_ctrl=ACCB_PULL;
+            addr_ctrl=AD_PULL; dout_ctrl=DO_ACCB;
+            next_state = ST_FETCH;
+        end
+        ST_PSHX_LO: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_PUSH; dout_ctrl=DO_IX_LO;
+            next_state = ST_PSHX_HI;
+        end
+        ST_PSHX_HI: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_PUSH; dout_ctrl=DO_IX_HI;
+            next_state = ST_FETCH;
+        end
+        ST_PULX_HI: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; sp_ctrl=SP_LOAD;
+            ix_ctrl=IX_PULL_HI;
+            addr_ctrl=AD_PULL; dout_ctrl=DO_IX_HI;
+            next_state = ST_PULX_LO;
+        end
+        ST_PULX_LO: begin
+            ix_ctrl=IX_PULL_LO;
+            addr_ctrl=AD_PULL; dout_ctrl=DO_IX_LO;
+            next_state = ST_FETCH;
+        end
+
+        // RTI
+        ST_RTI: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_IDLE; dout_ctrl=DO_CC;
+            next_state = ST_RTI_CC;
+        end
+        ST_RTI_CC: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; sp_ctrl=SP_LOAD;
+            cc_ctrl=CC_PULL;
+            addr_ctrl=AD_PULL; dout_ctrl=DO_CC;
+            next_state = ST_RTI_ACCB;
+        end
+        ST_RTI_ACCB: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; sp_ctrl=SP_LOAD;
+            accb_ctrl=ACCB_PULL;
+            addr_ctrl=AD_PULL; dout_ctrl=DO_ACCB;
+            next_state = ST_RTI_ACCA;
+        end
+        ST_RTI_ACCA: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; sp_ctrl=SP_LOAD;
+            acca_ctrl=ACCA_PULL;
+            addr_ctrl=AD_PULL; dout_ctrl=DO_ACCA;
+            next_state = ST_RTI_IXH;
+        end
+        ST_RTI_IXH: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; sp_ctrl=SP_LOAD;
+            ix_ctrl=IX_PULL_HI;
+            addr_ctrl=AD_PULL; dout_ctrl=DO_IX_HI;
+            next_state = ST_RTI_IXL;
+        end
+        ST_RTI_IXL: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; sp_ctrl=SP_LOAD;
+            ix_ctrl=IX_PULL_LO;
+            addr_ctrl=AD_PULL; dout_ctrl=DO_IX_LO;
+            next_state = ST_RTI_PCH;
+        end
+        ST_RTI_PCH: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_ADD16; sp_ctrl=SP_LOAD;
+            pc_ctrl=PC_PULL_HI;
+            addr_ctrl=AD_PULL; dout_ctrl=DO_PC_HI;
+            next_state = ST_RTI_PCL;
+        end
+        ST_RTI_PCL: begin
+            pc_ctrl=PC_PULL_LO;
+            addr_ctrl=AD_PULL; dout_ctrl=DO_PC_LO;
+            next_state = ST_FETCH;
+        end
+
+        // Interrupt push sequence
+        ST_INT_PCL: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_PUSH; dout_ctrl=DO_PC_LO;
+            next_state = ST_INT_PCH;
+        end
+        ST_INT_PCH: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_PUSH; dout_ctrl=DO_PC_HI;
+            next_state = ST_INT_IXL;
+        end
+        ST_INT_IXL: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_PUSH; dout_ctrl=DO_IX_LO;
+            next_state = ST_INT_IXH;
+        end
+        ST_INT_IXH: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_PUSH; dout_ctrl=DO_IX_HI;
+            next_state = ST_INT_ACCA;
+        end
+        ST_INT_ACCA: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_PUSH; dout_ctrl=DO_ACCA;
+            next_state = ST_INT_ACCB;
+        end
+        ST_INT_ACCB: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_PUSH; dout_ctrl=DO_ACCB;
+            next_state = ST_INT_CC;
+        end
+        ST_INT_CC: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_SUB16; sp_ctrl=SP_LOAD;
+            addr_ctrl=AD_PUSH; dout_ctrl=DO_CC;
+            if (nmi_req) begin
+                iv_ctrl    = IV_NMI;
+                next_state = ST_VECT_HI;
+            end else if (irq & ~cc[IBIT]) begin
+                iv_ctrl    = IV_IRQ;
+                next_state = ST_INT_MASK;
+            end else begin
+                case (op_code)
+                    8'b00111110: begin iv_ctrl=IV_LATCH; next_state=ST_INT_WAI; end
+                    8'b00111111: begin iv_ctrl=IV_SWI;   next_state=ST_VECT_HI; end
+                    default:     begin iv_ctrl=IV_LATCH; next_state=ST_RTI;     end
+                endcase
+            end
+        end
+
+        ST_INT_WAI: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_CLI; cc_ctrl=CC_LOAD;
+            addr_ctrl=AD_IDLE; dout_ctrl=DO_CC;
+            if (nmi_req & ~nmi_ack) begin
+                iv_ctrl    = IV_NMI;
+                nmi_ctrl   = NMI_SET;
+                next_state = ST_VECT_HI;
+            end else begin
+                if (~nmi_req & nmi_ack) nmi_ctrl = NMI_RESET;
+                else                    nmi_ctrl = NMI_LATCH;
+                if (irq & ~cc[IBIT]) begin
+                    iv_ctrl    = IV_IRQ;
+                    next_state = ST_INT_MASK;
+                end else begin
+                    iv_ctrl    = IV_LATCH;
+                    next_state = ST_INT_WAI;
+                end
+            end
+        end
+
+        ST_INT_MASK: begin
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ZERO; alu_ctrl=ALU_SEI; cc_ctrl=CC_LOAD;
+            addr_ctrl=AD_IDLE; dout_ctrl=DO_MD_LO;
+            next_state = ST_VECT_HI;
+        end
+
+        ST_HALT: begin
+            addr_ctrl=AD_IDLE; dout_ctrl=DO_MD_LO;
+            next_state = halt ? ST_HALT : ST_FETCH;
+        end
+
+        default: begin
+            addr_ctrl=AD_IDLE; dout_ctrl=DO_MD_LO;
+            next_state = ST_ERROR;
+        end
+        endcase
     end
-    
+
+    // ----------------------------------
+    // State register
+    // ----------------------------------
+    always @(negedge clk) begin
+        if (rst)        state <= ST_RESET;
+        else if (~hold) state <= next_state;
+    end
+
 endmodule
+
+`default_nettype wire
