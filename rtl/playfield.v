@@ -262,12 +262,12 @@ module playfield(
 `endif
 
     // 74191 counters at C5 and E8.
-    // PHP is the horizontal pixel-position counter. Tick every Clk6 during
-    // display so PHP[3:2] varies per pixel within a tile and LoadPd
-    // (PHP[1]&PHP[0]) fires every 4 pixels. The CPU loads it via
-    // PHP_Load_n with the horizontal scroll offset.
-    // Original VHDL gating confined increments to a tiny VBlank window,
-    // which broke playfield rendering entirely.
+    // PHP is a free-running horizontal pixel counter loaded by the CPU
+    // (PHP_Load_n strobe to $0120 = scroll offset). Counts on every Clk6
+    // so PHP[3:2] varies per pixel within a tile and LoadPd
+    // (PHP[1]&PHP[0]) fires every 4 pixels. The original VHDL gated
+    // increments by `((not H256) nand VBlank) = '0'` which restricted
+    // counting to a small VBlank window — wrong for raster scrolling.
     always @(posedge Clk6)
     begin: PHP_count
         if (PHP_Load_n == 1'b0)
