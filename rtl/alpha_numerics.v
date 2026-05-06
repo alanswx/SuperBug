@@ -108,10 +108,16 @@ module alpha_numerics(
     assign Sys_en = (BVMA & BA12nor11 & Phi2);
     assign BVMA = VMA;		//((not BA(14)) and VMA);
     
-    //Mux_select <= not(BA10and8 and BA12nor11 and BVMA);
-    //Mux_select <= not(BA10and8 and BA12nor11 and VMA);
-    assign Mux_select = (BVMA == 1'b1 & BA[12:10] == 3'b001 & BA[8] == 1'b1) ? 1'b0 : 
-                        1'b1;
+    // Mux_select=1 when CPU is at the alphanumeric RAM ($0400-$041F per MAME):
+    // BA[12:10]=001, BA[10]=1, BA[8]=0. Below, RAM_Addr = BA[4:0] when
+    // Mux_select=1 (CPU side), else display_addr. The original VHDL/Verilog
+    // had this inverted (BA[8]==1 which matches playfield range instead of
+    // alpha) AND with the Mux_select=0 polarity, so the display ended up
+    // reading whatever address the CPU bus happened to hold at the time —
+    // making every alpha cell appear identical (single character repeated
+    // at every screen position).
+    assign Mux_select = (BVMA == 1'b1 & BA[12:10] == 3'b001 & BA[8] == 1'b0) ? 1'b1 :
+                        1'b0;
     
     assign SysEnBA10_8 = (~(Sys_en & BA10and8));
     

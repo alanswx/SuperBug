@@ -69,6 +69,15 @@ module emu (
 	
 	output	[15:0]	AUDIO_L,
 	output	[15:0]	AUDIO_R,
+
+	output	[15:0]	dbg_pc,
+	output	[7:0]	dbg_opcode,
+	output	[15:0]	dbg_addr,
+	output	[7:0]	dbg_din,
+	output		dbg_op_fetch,
+	output	[7:0]	dbg_acca,
+	output	[7:0]	dbg_accb,
+	output	[7:0]	dbg_cc,
 	
 	input			ioctl_download,
 	input			ioctl_wr,
@@ -190,15 +199,38 @@ gearshift gearshift1
 );
 
 
-        wire [7:0] DIP_Sw = 8'b10100000; //-- Config dip switches
+        // DIP byte matches MAME's superbug defaults (firetrk.cpp DIP_1):
+        //   [7:6] Coinage      = 10  (1C/1C)
+        //   [5:4] Play Time    = 01  (90 sec)
+        //   [3:2] Extended     = 10  (Medium)
+        //   [1:0] Language     = 00  (English)
+        // dip_r() in MAME packs DIP_1 as 2 bits per offset, mirrored to the
+        // pair ordering this hardware exposes via Input.v's 74153 mux.
+        wire [7:0] DIP_Sw = 8'b10011000;
+
+// Sim-only: superbug expects a separate 12 MHz clock for the video synchronizer.
+// In the FPGA build a PLL produces this from CLK_50M; for Verilator we just
+// alias clk_sys (virtual timescale) so the video pipeline ticks at all.
+wire clk_12_sim = clk_sys;
+
+wire videowht;
+wire videoblk;
+wire compositesync;
+wire hsync;
+wire vsync;
+wire hblank;
+wire vblank;
+wire audio;
+wire lamp;
+wire lamp2;
 
 superbug superbug(
         .Clk_50_I(clk_sys),
-        .Clk12(clk_12),
-        .Reset_n(~(RESET | ioctl_download)),
+        .Clk12(clk_12_sim),
+        .Reset_n(~(reset | ioctl_download)),
 
         .dn_addr(ioctl_addr[16:0]),
-        .dn_data(ioctl_data),
+        .dn_data(ioctl_dout),
         .dn_wr(ioctl_wr),
         .Audio_O(audio),
 
@@ -213,7 +245,7 @@ superbug superbug(
         .Gear1_I(gear1),
         .Gear2_I(gear2),
         .Gear3_I(gear3),
-        .Test_I (1'b1),
+        .Test_I (1'b1),     // active-low self-test switch: 1 = OFF (normal play/attract)
         .Steer_1A_I(steer[1]),
         .Steer_1B_I(steer[0]),
         .Lamp1_O(lamp),
@@ -225,12 +257,19 @@ superbug superbug(
         .clk_6_O(clk_6),
         .DIP_Sw(DIP_Sw),
         .Slam_I(1'b1),
-        .Trak_Sel_I(~m_next_track)
+        .Trak_Sel_I(~m_next_track),
 
-
+        .dbg_pc(dbg_pc),
+        .dbg_opcode(dbg_opcode),
+        .dbg_addr(dbg_addr),
+        .dbg_din(dbg_din),
+        .dbg_op_fetch(dbg_op_fetch),
+        .dbg_acca(dbg_acca),
+        .dbg_accb(dbg_accb),
+        .dbg_cc(dbg_cc)
         );
 
-	wire clk_48,clk_12,clk_6;
+	wire clk_6;
 wire locked;
 reg [7:0] vid_mono;
 wire[1:0] sprint_vid;

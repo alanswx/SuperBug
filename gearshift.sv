@@ -19,9 +19,9 @@ module gearshift
 	input geardown,
 	
 	
-	output gear1,
-	output gear2,
-	output gear3
+	output reg gear1,
+	output reg gear2,
+	output reg gear3
 );
 
 reg [2:0] gear=3'b0;

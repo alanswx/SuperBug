@@ -517,7 +517,7 @@ module cpu68(
             ALU_NEG:  out_alu = right - left;
             ALU_COM:  out_alu = ~left;
             ALU_CLR, ALU_LD8, ALU_LD16: out_alu = right;
-            ALU_ST8, ALU_ST16:          out_alu = left;
+            ALU_ST8, ALU_ST16, ALU_TST: out_alu = left;
             ALU_DAA:  out_alu = left + {8'h00, daa_reg};
             ALU_TPA:  out_alu = {8'h00, cc};
             default:  out_alu = left;
@@ -541,6 +541,7 @@ module cpu68(
             ALU_DAA:   cc_out[CBIT] = (daa_reg[7:4] == 4'b0110);
             ALU_SEC:   cc_out[CBIT] = 1'b1;
             ALU_CLC:   cc_out[CBIT] = 1'b0;
+            ALU_TST:   cc_out[CBIT] = 1'b0;     // TST clears carry per 6800 spec
             ALU_TAP:   cc_out[CBIT] = left[CBIT];
             default:   cc_out[CBIT] = cc[CBIT];
         endcase
@@ -551,7 +552,7 @@ module cpu68(
             ALU_AND, ALU_ORA, ALU_EOR,
             ALU_INC, ALU_DEC, ALU_NEG, ALU_COM, ALU_CLR,
             ALU_ROL8, ALU_ROR8, ALU_ASR8, ALU_ASL8, ALU_LSR8,
-            ALU_LD8, ALU_ST8:
+            ALU_LD8, ALU_ST8, ALU_TST:
                 cc_out[ZBIT] = ~|out_alu[7:0];
             ALU_ADD16, ALU_SUB16, ALU_LSL16, ALU_LSR16,
             ALU_INX, ALU_DEX, ALU_LD16, ALU_ST16, ALU_CPX:
@@ -566,7 +567,7 @@ module cpu68(
             ALU_AND, ALU_ORA, ALU_EOR,
             ALU_ROL8, ALU_ROR8, ALU_ASR8, ALU_ASL8, ALU_LSR8,
             ALU_INC, ALU_DEC, ALU_NEG, ALU_COM, ALU_CLR,
-            ALU_LD8, ALU_ST8:
+            ALU_LD8, ALU_ST8, ALU_TST:
                 cc_out[NBIT] = out_alu[7];
             ALU_ADD16, ALU_SUB16, ALU_LSL16, ALU_LSR16,
             ALU_LD16, ALU_ST16, ALU_CPX:
@@ -618,7 +619,8 @@ module cpu68(
             ALU_ROL8, ALU_ASL8: cc_out[VBIT] = left[7] ^ left[6];
             ALU_TAP:   cc_out[VBIT] = left[VBIT];
             ALU_AND, ALU_ORA, ALU_EOR, ALU_COM,
-            ALU_ST8, ALU_ST16, ALU_LD8, ALU_LD16, ALU_CLV:
+            ALU_ST8, ALU_ST16, ALU_LD8, ALU_LD16, ALU_CLV,
+            ALU_TST:
                        cc_out[VBIT] = 1'b0;
             ALU_SEV:   cc_out[VBIT] = 1'b1;
             default:   cc_out[VBIT] = cc[VBIT];
@@ -894,7 +896,7 @@ module cpu68(
                     4'b1001: begin alu_ctrl=ALU_ROL8; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
                     4'b1010: begin right_ctrl=RIGHT_ONE; alu_ctrl=ALU_DEC; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
                     4'b1100: begin right_ctrl=RIGHT_ONE; alu_ctrl=ALU_INC; cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
-                    4'b1101: begin alu_ctrl=ALU_ST8;  cc_ctrl=CC_LOAD; end
+                    4'b1101: begin alu_ctrl=ALU_TST;  cc_ctrl=CC_LOAD; end
                     4'b1110: begin alu_ctrl=ALU_NOP; end
                     4'b1111: begin alu_ctrl=ALU_CLR;  cc_ctrl=CC_LOAD; acca_ctrl=ACCA_LOAD; end
                     default: begin alu_ctrl=ALU_NOP; end
@@ -915,7 +917,7 @@ module cpu68(
                     4'b1001: begin alu_ctrl=ALU_ROL8; cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD; end
                     4'b1010: begin right_ctrl=RIGHT_ONE; alu_ctrl=ALU_DEC; cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD; end
                     4'b1100: begin right_ctrl=RIGHT_ONE; alu_ctrl=ALU_INC; cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD; end
-                    4'b1101: begin alu_ctrl=ALU_ST8;  cc_ctrl=CC_LOAD; end
+                    4'b1101: begin alu_ctrl=ALU_TST;  cc_ctrl=CC_LOAD; end
                     4'b1110: begin alu_ctrl=ALU_NOP; end
                     4'b1111: begin alu_ctrl=ALU_CLR;  cc_ctrl=CC_LOAD; accb_ctrl=ACCB_LOAD; end
                     default: begin alu_ctrl=ALU_NOP; end
@@ -1205,7 +1207,7 @@ module cpu68(
                         4'b1010: begin right_ctrl=RIGHT_ONE; alu_ctrl=ALU_DEC; cc_ctrl=CC_LOAD; md_ctrl=MD_LOAD; next_state=ST_WRITE8; end
                         4'b1011: begin alu_ctrl=ALU_NOP; next_state=ST_FETCH; end
                         4'b1100: begin right_ctrl=RIGHT_ONE; alu_ctrl=ALU_INC; cc_ctrl=CC_LOAD; md_ctrl=MD_LOAD; next_state=ST_WRITE8; end
-                        4'b1101: begin alu_ctrl=ALU_ST8;  cc_ctrl=CC_LOAD; next_state=ST_FETCH; end
+                        4'b1101: begin alu_ctrl=ALU_TST;  cc_ctrl=CC_LOAD; next_state=ST_FETCH; end
                         4'b1110: begin alu_ctrl=ALU_NOP; next_state=ST_FETCH; end
                         4'b1111: begin alu_ctrl=ALU_CLR;  cc_ctrl=CC_LOAD; md_ctrl=MD_LOAD; next_state=ST_WRITE8; end
                         default: begin alu_ctrl=ALU_NOP; next_state=ST_FETCH; end

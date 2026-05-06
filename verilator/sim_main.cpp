@@ -23,12 +23,20 @@
 #include "../imgui/imgui_memory_editor.h"
 #include "../imgui/ImGuiFileDialog.h"
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "sim/stb_image_write.h"
+
+#include "sim_disasm6800.h"
+
 #include <iostream>
 #include <sstream>
 #include <fstream>
 #include <iterator>
 #include <string>
 #include <iomanip>
+#include <vector>
+#include <algorithm>
+#include <cstring>
 using namespace std;
 
 // Simulation control
@@ -118,6 +126,69 @@ void resetSim() {
 	clk_sys.Reset();
 }
 
+// Screenshot support
+// ------------------
+std::vector<int> screenshot_frames;
+bool screenshot_mode = false;
+std::string screenshot_name_override;
+int stop_at_frame = -1;
+bool headless_mode = false;
+
+// CPU trace
+std::string trace_path;
+FILE*       trace_fp = nullptr;
+int         trace_max = 0;       // 0 = unlimited
+int         trace_count = 0;
+
+void save_screenshot(int frame_number) {
+	if (!output_ptr) {
+		fprintf(stderr, "screenshot: output_ptr null\n");
+		return;
+	}
+	char filename[512];
+	if (!screenshot_name_override.empty()) {
+		snprintf(filename, sizeof(filename), "%s", screenshot_name_override.c_str());
+	} else {
+		snprintf(filename, sizeof(filename), "screenshot_frame_%04d.png", frame_number);
+	}
+
+	// Use the SimVideo instance dimensions, not the file-scope globals in
+	// sim_video.cpp (those keep their default 512x512 because the constructor
+	// shadows them with class members of the same name).
+	int w = video.output_width;
+	int h = video.output_height;
+	uint8_t* rgb = (uint8_t*)malloc(w * h * 3);
+	if (!rgb) { fprintf(stderr, "screenshot: malloc failed\n"); return; }
+
+	// video.Clock writes pixels as 0xFF000000 | B<<16 | G<<8 | R (ABGR-in-uint32).
+	for (int y = 0; y < h; y++) {
+		for (int x = 0; x < w; x++) {
+			uint32_t p = output_ptr[y * w + x];
+			int di = (y * w + x) * 3;
+			rgb[di + 0] = (p >> 0)  & 0xFF;
+			rgb[di + 1] = (p >> 8)  & 0xFF;
+			rgb[di + 2] = (p >> 16) & 0xFF;
+		}
+	}
+	int ok = stbi_write_png(filename, w, h, 3, rgb, w * 3);
+	free(rgb);
+	fprintf(stderr, ok ? "screenshot: saved %s (%dx%d)\n" : "screenshot: FAILED %s\n",
+	        filename, w, h);
+}
+
+// Parse "100,200,300" into screenshot_frames; also accepts a single number.
+static void parse_screenshot_frames(const char* arg) {
+	const char* p = arg;
+	while (*p) {
+		char* end = nullptr;
+		long n = strtol(p, &end, 10);
+		if (end == p) break;
+		screenshot_frames.push_back((int)n);
+		p = end;
+		while (*p == ',' || *p == ' ') p++;
+	}
+}
+
 int verilate() {
 
 	if (!Verilated::gotFinish()) {
@@ -158,6 +229,42 @@ int verilate() {
 			}
 			top->eval();
 			if (clk_sys.clk) { bus.AfterEval(); blockdevice.AfterEval(); }
+
+			// CPU instruction trace: emit one line per *opcode latch* event,
+			// i.e. each time op_code changes (cpu68 latches a new opcode in
+			// state_type_fetch_state). The pc at that instant is the address
+			// of the byte *following* the opcode, so the instruction PC is
+			// pc-1.
+			if (trace_fp) {
+				// One line per executed instruction. Strategy: while
+				// dbg_op_fetch is high, latch the *last seen* dbg_addr (the
+				// pc presented during the fetch cycle). On the falling
+				// edge of dbg_op_fetch the cpu68 negedge has just updated
+				// op_code; read dbg_opcode and emit (latched_addr, opcode).
+				// This works even for runs of repeated identical opcodes,
+				// which the simpler "op_code changed" trigger collapsed.
+				static bool     last_fetch  = false;
+				static uint16_t fetch_addr  = 0;
+				bool fetch = top->dbg_op_fetch;
+				if (fetch) {
+					fetch_addr = top->dbg_addr;
+				}
+				if (!fetch && last_fetch) {
+					uint8_t op_byte = top->dbg_opcode;
+					char line[128];
+					Op6800 d = disasm6800_table(op_byte);
+					snprintf(line, sizeof line,
+					         "%04X: %02X  %-4s A=%02X B=%02X CC=%02X",
+					         fetch_addr, op_byte, d.mnem,
+					         top->dbg_acca, top->dbg_accb, top->dbg_cc);
+					fprintf(trace_fp, "%s\n", line);
+					if (trace_max && ++trace_count >= trace_max) {
+						fclose(trace_fp); trace_fp = nullptr;
+						fprintf(stderr, "trace: hit limit %d, closed\n", trace_max);
+					}
+				}
+				last_fetch = fetch;
+			}
 		}
 
 #ifndef DISABLE_AUDIO
@@ -170,7 +277,24 @@ int verilate() {
 		// Output pixels on rising edge of pixel clock
 		if (clk_sys.IsRising() && top->CE_PIXEL ) {
 			uint32_t colour = 0xFF000000 | top->VGA_B << 16 | top->VGA_G << 8 | top->VGA_R;
+			static int prev_frame = 0;
 			video.Clock(top->VGA_HB, top->VGA_VB, top->VGA_HS, top->VGA_VS, colour);
+			if (video.count_frame != prev_frame) {
+				fprintf(stderr, "[frame] %d (t=%llu)\n",
+				        video.count_frame, (unsigned long long)main_time);
+				prev_frame = video.count_frame;
+				if (screenshot_mode) {
+					auto it = std::find(screenshot_frames.begin(), screenshot_frames.end(), video.count_frame);
+					if (it != screenshot_frames.end()) {
+						save_screenshot(video.count_frame);
+						screenshot_frames.erase(it);
+					}
+				}
+				if (stop_at_frame >= 0 && video.count_frame >= stop_at_frame) {
+					fprintf(stderr, "stop-at-frame %d reached, exiting\n", stop_at_frame);
+					exit(0);
+				}
+			}
 		}
 
 		if (clk_sys.IsRising()) {
@@ -199,6 +323,41 @@ unsigned char mouse_y = 0;
 char spinner_toggle = 0;
 
 int main(int argc, char** argv, char** env) {
+
+	// Parse our CLI args before handing the rest to Verilator.
+	for (int i = 1; i < argc; i++) {
+		if ((!strcmp(argv[i], "--screenshot") || !strcmp(argv[i], "-screenshot")) && i + 1 < argc) {
+			screenshot_mode = true;
+			parse_screenshot_frames(argv[++i]);
+		} else if (!strcmp(argv[i], "--screenshot-name") && i + 1 < argc) {
+			screenshot_name_override = argv[++i];
+		} else if (!strcmp(argv[i], "--stop-at-frame") && i + 1 < argc) {
+			stop_at_frame = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "--headless")) {
+			headless_mode = true;
+		} else if (!strcmp(argv[i], "--trace") && i + 1 < argc) {
+			trace_path = argv[++i];
+		} else if (!strcmp(argv[i], "--trace-max") && i + 1 < argc) {
+			trace_max = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
+			printf("Super Bug Verilator sim\n"
+			       "  --screenshot <frames>     comma-separated frame numbers\n"
+			       "  --screenshot-name <path>  override output path (single shot)\n"
+			       "  --stop-at-frame <n>       exit after frame n\n"
+			       "  --headless                hint for batch mode (still opens window)\n");
+			return 0;
+		}
+	}
+
+	if (!trace_path.empty()) {
+		trace_fp = fopen(trace_path.c_str(), "w");
+		if (!trace_fp) {
+			fprintf(stderr, "trace: could not open %s for write\n", trace_path.c_str());
+			return 1;
+		}
+		fprintf(stderr, "trace: writing to %s%s\n", trace_path.c_str(),
+		        trace_max ? " (capped)" : "");
+	}
 
 	// Create core and initialise
 	top = new Vemu();
@@ -354,36 +513,9 @@ int main(int argc, char** argv, char** env) {
 		console.Draw(windowTitle_DebugLog, &showDebugLog, ImVec2(500, 700));
 		ImGui::SetWindowPos(windowTitle_DebugLog, ImVec2(0, 160), ImGuiCond_Once);
 
-		// Memory debug
-		ImGui::Begin("Fast RAM Editor");
-		mem_edit.DrawContents(&top->emu__DOT__top__DOT__fastram__DOT__ram, 8388608, 0);
-		ImGui::End();
-		ImGui::Begin("Slow RAM Editor");
-		mem_edit.DrawContents(&top->emu__DOT__top__DOT__slowram__DOT__ram, 65536, 0);
-		ImGui::End();
-
-	
-		ImGui::Begin("CPU Registers");
-		ImGui::Checkbox("Break", &pc_break_enabled); ImGui::SameLine();
-		ImGui::InputTextWithHint("Address", "0000", pc_breakpoint, IM_ARRAYSIZE(pc_breakpoint),ImGuiInputTextFlags_CharsHexadecimal);
-		ImGui::Spacing();
-		ImGui::Text("A       0x%04X", top->emu__DOT__top__DOT__core__DOT__cpu__DOT__A);
-		ImGui::Text("X       0x%04X", top->emu__DOT__top__DOT__core__DOT__cpu__DOT__X);
-		ImGui::Text("Y       0x%04X", top->emu__DOT__top__DOT__core__DOT__cpu__DOT__Y);
-		ImGui::Text("D       0x%04X", top->emu__DOT__top__DOT__core__DOT__cpu__DOT__D);
-		ImGui::Text("SP      0x%04X", top->emu__DOT__top__DOT__core__DOT__cpu__DOT__SP);
-		ImGui::Text("DBR     0x%02X", top->emu__DOT__top__DOT__core__DOT__cpu__DOT__DBR);
-		ImGui::Text("PBR     0x%02X", top->emu__DOT__top__DOT__core__DOT__cpu__DOT__PBR);
-		ImGui::Text("PC      0x%04X", top->emu__DOT__top__DOT__core__DOT__cpu__DOT__PC);
-		ImGui::Spacing();
-		ImGui::Text("ADDR:    0x%06X", top->emu__DOT__top__DOT__core__DOT__cpu__DOT__A_OUT);
-		ImGui::Text("DIN:     0x%01X", top->emu__DOT__top__DOT__core__DOT__cpu__DOT__D_IN);
-		ImGui::Text("DOUT:    0x%01X", top->emu__DOT__top__DOT__core__DOT__cpu__DOT__D_OUT);
-		ImGui::Text("WE:      0x%01X", top->emu__DOT__top__DOT__core__DOT__cpu__DOT__WE);
-		ImGui::Text("VDA:     0x%01X", top->emu__DOT__top__DOT__core__DOT__cpu__DOT__VDA);
-		ImGui::Text("VPA:     0x%01X", top->emu__DOT__top__DOT__core__DOT__cpu__DOT__VPA);
-		ImGui::Text("VPB:     0x%01X", top->emu__DOT__top__DOT__core__DOT__cpu__DOT__VPB);
-		ImGui::End();
+		// Memory / CPU debug windows disabled — hierarchy is from a
+		// different core. TODO: re-wire to Super Bug signals via
+		// /*verilator public*/ on cpu68 internals if needed.
 		//ImGui::Spacing();
 
 
@@ -508,16 +640,7 @@ fprintf(stderr,"filePath: %s\n",filePath.c_str());
 		// Run simulation
 		if (run_enable) {
 			for (int step = 0; step < batchSize; step++) { 
-				long addr = strtol(pc_breakpoint, NULL, 16);
-				if (top->emu__DOT__top__DOT__core__DOT__cpu__DOT__PC==addr && pc_break_enabled)
-				{
-					run_enable=false;
-					// break!
-				}
-				else{
-
-					verilate(); 
-				}
+				verilate();
 			}
 		}
 		else {

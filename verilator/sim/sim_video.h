@@ -12,6 +12,13 @@
 #include <tchar.h>
 #endif
 
+#include <cstdint>
+
+// File-scope globals defined in sim_video.cpp; exposed for screenshot capture.
+extern uint32_t* output_ptr;
+extern int output_width;
+extern int output_height;
+
 struct SimVideo {
 public:
 

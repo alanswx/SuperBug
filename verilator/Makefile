@@ -5,9 +5,9 @@ TOP = --top-module emu
 RTL = ../rtl
 V_INC = +incdir+$(RTL)
 
-V_DEFINE = +define+debug=1 +define+SIMULATION=1   -CFLAGS "-I../sim/imgui -I../sim/vinc -I../sim/ -g "  --timescale-override 1ps/1ps -Wno-TIMESCALEMOD  \
+V_DEFINE = +define+debug=1 +define+SIMULATION=1   -CFLAGS "-I../sim/imgui -I../sim/ -g "  --timescale-override 1ps/1ps -Wno-TIMESCALEMOD -Wno-fatal \
 	-I$(RTL)  \
-	-I.. 
+	-I..
 #V_DEFINE += --converge-limit 2000 -Wno-WIDTH -Wno-IMPLICIT -Wno-MODDUP -Wno-UNSIGNED -Wno-CASEINCOMPLETE -Wno-CASEX -Wno-SYMRSVDWORD -Wno-COMBDLY -Wno-INITIALDLY -Wno-BLKANDNBLK -Wno-UNOPTFLAT -Wno-SELRANGE -Wno-CMPCONST -Wno-CASEOVERLAP -Wno-PINMISSING -Wno-MULTIDRIVEN
 #V_DEFINE += --threads 8  # this slows it way down
 V_DEFINE +=
@@ -20,7 +20,8 @@ ifeq ($(UNAME_S), Darwin) #APPLE
 	LIBS += -L/usr/local/lib -L/opt/local/lib
 
 	CXXFLAGS += `sdl2-config --cflags` -Iimgui
-	CXXFLAGS += -I/usr/local/include -I/opt/local/include
+	CXXFLAGS += -I/usr/local/include -I/opt/local/include -I/opt/homebrew/include
+	LIBS += -L/opt/homebrew/lib
 	CFLAGS = $(CXXFLAGS) -Iimgui
 endif
 
@@ -44,13 +45,15 @@ CFLAGS += $(CC_OPT) $(CC_DEFINE) -Iimgui
 LDFLAGS = $(LIBS)
 EXE = ./obj_dir/Vemu
 #V_OPT = -O3 --x-assign fast --x-initial fast --noassert
-V_OPT =  --x-assign fast --x-initial fast --noassert
+V_OPT =  --x-assign fast --x-initial fast --noassert --converge-limit 6000
 #CC_OPT = -O
 CC_OPT = 
 
 V_SRC = \
 	sim.v  \
-	../rtl/alpha_numerics.v  ../rtl/car.v  ../rtl/cpu_mem.v  ../rtl/Input.v  ../rtl/mixer.v  ../rtl/playfield.v  ../rtl/pll.v  ../rtl/superbug.v  ../rtl/synchronizer.v
+	../rtl/alpha_numerics.v  ../rtl/car.v  ../rtl/cpu_mem.v  ../rtl/Input.v  ../rtl/mixer.v  ../rtl/playfield.v  ../rtl/pll.v  ../rtl/superbug.v  ../rtl/synchronizer.v \
+	../verilog/cpu68.v  ../verilog/prom.v \
+	sim_roms.v
 
 
 
@@ -65,7 +68,7 @@ VOUT = obj_dir/Vemu.cpp
 all: $(EXE)
 
 $(VOUT): $(V_SRC)  Makefile
-	$V -cc $(V_OPT) -LDFLAGS "$(LDFLAGS) " -exe --trace --Mdir ./obj_dir $(V_DEFINE) $(V_INC) $(TOP) -CFLAGS $(CFLAGS) $(V_SRC) $(C_SRC)
+	$V -cc $(V_OPT) -LDFLAGS "$(LDFLAGS) " -exe --trace --Mdir ./obj_dir $(V_DEFINE) $(V_INC) $(TOP) -CFLAGS "$(CFLAGS)" $(V_SRC) $(C_SRC)
 
 $(EXE): $(VOUT) $(C_SRC)
 #	(cd obj_dir; make OPT="-fauto-inc-dec -fdce -fdefer-pop -fdse -ftree-ccp -ftree-ch -ftree-fre -ftree-dce -ftree-dse" -f Vemu.mk)

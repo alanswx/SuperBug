@@ -51,8 +51,24 @@ module superbug(
     DIP_Sw,
     dn_addr,
     dn_data,
-    dn_wr
+    dn_wr,
+    dbg_pc,
+    dbg_opcode,
+    dbg_addr,
+    dbg_din,
+    dbg_op_fetch,
+    dbg_acca,
+    dbg_accb,
+    dbg_cc
 );
+    output [15:0] dbg_pc;
+    output [7:0]  dbg_opcode;
+    output [15:0] dbg_addr;
+    output [7:0]  dbg_din;
+    output        dbg_op_fetch;
+    output [7:0]  dbg_acca;
+    output [7:0]  dbg_accb;
+    output [7:0]  dbg_cc;
     input        Clk_50_I;		// 50MHz input clock
     input        Reset_n;		// Reset button (Active low)
     output       Video1_O;		// Video output 1 (1k Ohm)
@@ -190,7 +206,15 @@ module superbug(
         .SkidSnd_n(SkidSnd_n),
         .Adr(CPU_Adr),
         .DBus_in(CPU_Din),
-        .DBus_out(CPU_Dout)
+        .DBus_out(CPU_Dout),
+        .dbg_pc(dbg_pc),
+        .dbg_opcode(dbg_opcode),
+        .dbg_addr(dbg_addr),
+        .dbg_din(dbg_din),
+        .dbg_op_fetch(dbg_op_fetch),
+        .dbg_acca(dbg_acca),
+        .dbg_accb(dbg_accb),
+        .dbg_cc(dbg_cc)
     );
     
     

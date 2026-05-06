@@ -41,8 +41,24 @@ module cpu_mem(
     SkidSnd_n,
     Adr,
     DBus_in,
-    DBus_out
+    DBus_out,
+    dbg_pc,
+    dbg_opcode,
+    dbg_addr,
+    dbg_din,
+    dbg_op_fetch,
+    dbg_acca,
+    dbg_accb,
+    dbg_cc
 );
+    output [15:0] dbg_pc;
+    output [7:0]  dbg_opcode;
+    output [15:0] dbg_addr;
+    output [7:0]  dbg_din;
+    output        dbg_op_fetch;
+    output [7:0]  dbg_acca;
+    output [7:0]  dbg_accb;
+    output [7:0]  dbg_cc;
     input         Clk6;
     input         Reset_n;
     input         VBlank;
@@ -137,16 +153,28 @@ module cpu_mem(
     
     // IRQ
    
-    always @(negedge V16 or negedge HBlank)
-    begin: IRQ_DFF
-        if (HBlank == 1'b0)
-            IRQ_n <= 1'b1;
-        else 		// Real hardware uses rising edge of inverted 16V
-            IRQ_n <= 1'b0;
+    // 7474 D-FF: D tied to '0' (so it can only be set to 0), CLK = V16
+    // falling edge, async clear (preset) when HBlank=0 sets IRQ_n=1.
+    // Original Verilog used "negedge V16 or negedge HBlank" which fires
+    // multiple times per scanline in Verilator's event scheduler; rewrite
+    // as a clock-enable on the Clk6 domain that drives this block.
+    reg prev_V16;
+    always @(posedge Clk6) begin
+        prev_V16 <= V16;
+    end
+    wire ce_V16_fall = ~V16 & prev_V16;
+    always @(posedge Clk6) begin: IRQ_DFF
+        if (HBlank == 1'b0)        IRQ_n <= 1'b1;     // level-sensitive preset
+        else if (ce_V16_fall)      IRQ_n <= 1'b0;     // V16 falling edge -> assert
     end
     
 
-    assign NMI_n = ((~VBlank));
+    // VBlank is held wide (vcount 240..255) so the playfield-RAM mux
+    // routes the CPU bus during the full retrace. For NMI we use only the
+    // first scanline of VBlank as a level, so cpu68 sees a clean
+    // rise/fall per frame and won't queue a nested NMI when its handler
+    // takes longer than one VBlank-wide window.
+    assign NMI_n = ~(VBlank & VCount[3:0] == 4'd0);
     
     // Watchdog
     
@@ -166,7 +194,15 @@ module cpu_mem(
         .hold(1'b0),		// hold input (active high) extend bus cycle
         .halt(1'b0),		// halt input (active high) grants DMA
         .irq(irq),		// interrupt request input (active high)
-        .nmi(nmi)		// non maskable interrupt request input (active high)
+        .nmi(nmi),		// non maskable interrupt request input (active high)
+        .dbg_pc(dbg_pc),
+        .dbg_opcode(dbg_opcode),
+        .dbg_addr(dbg_addr),
+        .dbg_din(dbg_din),
+        .dbg_op_fetch(dbg_op_fetch),
+        .dbg_acca(dbg_acca),
+        .dbg_accb(dbg_accb),
+        .dbg_cc(dbg_cc)
     );
     
     assign DBus_out = CPU_Dout;		// when phi2 = '0' else (others => '1');	-- added phi2 
@@ -305,9 +341,15 @@ module cpu_mem(
     assign ArrowOff_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b111) ? 1'b0 : 
                         1'b1;
     
-    assign In1_n = (SysEn == 1'b1 & Adr[9] == 1'b1 & Adr[7:5] == 3'b000) ? 1'b0 : 
+    // Note: SysEn is gated by PHI2 in the original, which is correct for
+    // write-strobe generation but causes a one-event-cycle race in Verilator
+    // when the CPU samples data_in on negedge PHI2 (mux returns FF before
+    // the CPU latches the I/O byte). Use BVMA & BA12nor11 (= SysEn ungated)
+    // for the read-side decoders. Writes still use SysEn for IO_Wr.
+    wire SysEn_rd = BVMA & BA12nor11;
+    assign In1_n = (SysEn_rd == 1'b1 & Adr[9] == 1'b1 & Adr[7:5] == 3'b000) ? 1'b0 :
                    1'b1;
-    assign Opt_n = (SysEn == 1'b1 & Adr[9] == 1'b1 & Adr[7:5] == 3'b010) ? 1'b0 : 
+    assign Opt_n = (SysEn_rd == 1'b1 & Adr[9] == 1'b1 & Adr[7:5] == 3'b010) ? 1'b0 :
                    1'b1;
     assign Out2_n = (SysEn == 1'b1 & Adr[9] == 1'b1 & Adr[7:5] == 3'b011) ? 1'b0 : 
                     1'b1;

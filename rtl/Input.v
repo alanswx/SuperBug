@@ -76,17 +76,19 @@ module Input(
     
     // Steering inputs, handled by 7474's at H10 and J10 
     
-    always @(*)
+    // 7474 D-FF: D tied high, clocked by Steering1B_n rising edge,
+    // async clear by SteerReset_n. SteerDir samples Steering1A on each clock.
+    always @(posedge Steering1B_n or negedge SteerReset_n)
     begin: SteeringA
-        if (SteerReset_n == 1'b0)		// Asynchronous clear
+        if (SteerReset_n == 1'b0)
         begin
-            SteerFlag = 1'b0;
-            SteerDir = 1'b0;
+            SteerFlag <= 1'b0;
+            SteerDir  <= 1'b0;
         end
-        else 
+        else
         begin
-            SteerFlag = 1'b1;
-            SteerDir = Steering1A;		// Steering encoders are active low but inverted on board
+            SteerFlag <= 1'b1;
+            SteerDir  <= Steering1A;
         end
     end
     
