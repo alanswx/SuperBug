@@ -263,16 +263,18 @@ module playfield(
 `endif
 
     // 74191 counters at C5 and E8.
-    // PHP is the horizontal pixel counter — must tick every Clk6 so that
-    // PHP[3:2] varies per pixel within a tile (drives the ROM column index)
-    // and PHP[1:0] cycles to fire LoadPd every 4 pixels. Original VHDL
-    // gating `((not H256) nand VBlank) = '0'` confines increments to a
-    // tiny VBlank window, which is wrong for raster scrolling — the
-    // playfield never renders because LoadPd never fires during display.
+    // PHP is the horizontal pixel-position counter. Tick every Clk6 during
+    // display so PHP[3:2] varies per pixel within a tile and LoadPd
+    // (PHP[1]&PHP[0]) fires every 4 pixels. The CPU loads it via
+    // PHP_Load_n with the horizontal scroll offset.
+    // Original VHDL gating confined increments to a tiny VBlank window,
+    // which broke playfield rendering entirely.
     always @(posedge Clk6)
     begin: PHP_count
         if (PHP_Load_n == 1'b0)
             PHP <= BD;
+        else if (HSync)
+            PHP <= 8'b0;          // reset each scanline so column index aligns
         else
             PHP <= PHP + 1;
     end
