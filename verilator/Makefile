@@ -67,6 +67,14 @@ VOUT = obj_dir/Vemu.cpp
 
 all: $(EXE)
 
+# Glyph-test build: replaces program ROM A1 with a tiny shim that fills
+# playfield RAM ($0500-$05FF) with codes $00..$FF in a 16x16 grid, with
+# PHP=PVP=0 and attract on. Use to visually verify every background tile
+# from the F5/H5/E5 PROMs. Run: `make glyphtest && ./obj_dir/Vemu`.
+glyphtest:
+	$(MAKE) clean
+	$(MAKE) V_DEFINE='$(V_DEFINE) +define+GLYPH_TEST=1'
+
 $(VOUT): $(V_SRC)  Makefile
 	$V -cc $(V_OPT) -LDFLAGS "$(LDFLAGS) " -exe --trace --Mdir ./obj_dir $(V_DEFINE) $(V_INC) $(TOP) -CFLAGS "$(CFLAGS)" $(V_SRC) $(C_SRC)
 

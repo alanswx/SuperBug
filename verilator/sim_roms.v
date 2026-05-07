@@ -55,7 +55,11 @@ endmodule
 
 module ROM_A1 (input wire clock, input wire [10:0] address, output reg [7:0] q);
     reg [7:0] mem [0:2047];
+`ifdef GLYPH_TEST
+    initial $readmemh("../roms/hex/glyphtest_a1.hex", mem);
+`else
     initial $readmemh("../roms/hex/009123a1.hex", mem);
+`endif
     always @(posedge clock) q <= mem[address];
 endmodule
 
