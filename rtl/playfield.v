@@ -221,12 +221,17 @@ module playfield(
     // inside the vertical retrace — true on the real 6800 (~750 kHz)
     // but not in our cpu68 sim (much higher cycles/instr).
     //
-    // Swap PHP/PVP order so that tile index = row*16 + col with row =
-    // horizontal pixel position (not vertical scanline). This matches
-    // the way the program lays out its tilemap (writing trees in
-    // BA[7:5]=column 0/15 area, road in middle columns) so the road
-    // runs vertically post-rotation in MAME's orientation.
-    assign PF_RAM_Adr = PfldRAM ? BA[7:0] : {PHP[7:4], PVP[7:4]};
+    // Original schematic order: PVP[7:4] in the high nibble, PHP[7:4] in
+    // the low nibble. The CPU (per MAME) writes scroll_y to PVP_Load
+    // ($0100) and scroll_x to PHP_Load ($0120) and lays out the tilemap
+    // as mem[(row<<4) | col] where row = un-rotated y direction, col =
+    // un-rotated x direction. After our VGA_ROTATE=-1 (90° CCW), the
+    // un-rotated horizontal road rotates into a vertical road. Keeping
+    // this order also keeps the scroll direction correct: PHP (scroll_x)
+    // updates per-frame become vertical motion in the rotated view —
+    // which is what "moving forward along the road" looks like in the
+    // vertical-cabinet orientation.
+    assign PF_RAM_Adr = PfldRAM ? BA[7:0] : {PVP[7:4], PHP[7:4]};
     
     // Check data bus paths carefully
     assign PFRAM_Din = (BD_en == 1'b0) ? BD : 
@@ -267,20 +272,41 @@ module playfield(
     end
 `endif
 
-    // 74191 counters at C5 and E8.
-    // PHP is a free-running horizontal pixel counter loaded by the CPU
-    // (PHP_Load_n strobe to $0120 = scroll offset). Counts on every Clk6
-    // so PHP[3:2] varies per pixel within a tile and LoadPd
-    // (PHP[1]&PHP[0]) fires every 4 pixels. The original VHDL gated
-    // increments by `((not H256) nand VBlank) = '0'` which restricted
-    // counting to a small VBlank window — wrong for raster scrolling.
+    // 74191 counters at C5 and E8. PHP is loaded from BD when CPU writes
+    // $0120 (scroll_x), then free-runs at Clk6 across the visible region
+    // of each scanline. With an 8-bit width and exactly 256 increments
+    // per scanline (the visible H256=0 half of our 512-tick line), PHP
+    // wraps cleanly each scanline so it acts as scroll_x without needing
+    // an explicit per-line reset.
+    //
+    // Original VHDL gate was `((not H256) nand VBlank) = '0'` which
+    // means H256=0 AND VBlank=1 — written for the schematic's VBlank
+    // polarity where VBlank=1 means visible. Our synchronizer follows
+    // the MiSTer convention (VBlank=1 means retrace), so the equivalent
+    // gate is H256=0 AND VBlank=0.
+    // Per the MAME firetrk_state driver, scroll_x and scroll_y are
+    // continuous tilemap scroll registers (`set_scrollx(*m_scroll_x-37)`,
+    // `set_scrolly(*m_scroll_y)`). On real hardware that is implemented
+    // as: CPU writes scroll_x to PHP via the PHP_Load strobe, then PHP
+    // free-runs at the pixel rate during the *visible* portion of each
+    // scanline. With 256 visible pixels per scanline, an 8-bit PHP wraps
+    // exactly once and so re-aligns to scroll_x at the start of the
+    // next line — that is what gives a stable horizontal scroll.
+    //
+    // Visible region marker: in our synchronizer, H256=1 corresponds to
+    // the visible 512 h_counter ticks (256 Clk6 posedges). Gating PHP++
+    // on H256 gives exactly 256 increments per scanline.
+    //
+    // The original VHDL gate `((not H256) nand VBlank) = '0'` is the
+    // same condition once you flip VBlank polarity (the schematic uses
+    // VBlank=1 for "visible", we use VBlank=1 for retrace) AND realise
+    // it's H256=1 (not H256=0) that names the visible window in our
+    // synchronizer's polarity.
     always @(posedge Clk6)
     begin: PHP_count
         if (PHP_Load_n == 1'b0)
             PHP <= BD;
-        else if (HSync)
-            PHP <= 8'b0;          // reset each scanline so column index aligns
-        else
+        else if (H256)
             PHP <= PHP + 1;
     end
     
