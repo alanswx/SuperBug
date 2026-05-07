@@ -38,6 +38,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
 using namespace std;
 
 // Simulation control
@@ -508,6 +509,25 @@ int main(int argc, char** argv, char** env) {
 	input.SetMapping(input_select, SDL_SCANCODE_2);
 	input.SetMapping(input_menu, SDL_SCANCODE_M);
 #endif
+
+	if (headless_mode) {
+		output_ptr = (uint32_t*)malloc(video.output_width * video.output_height * 4);
+		if (!output_ptr) {
+			fprintf(stderr, "headless: video buffer allocation failed\n");
+			return 1;
+		}
+		memset(output_ptr, 0xAA, video.output_width * video.output_height * 4);
+		top->joystick_0 = 0;
+		top->joystick_1 = 0;
+		top->service_mode = service_mode ? 1 : 0;
+		while (true) {
+			for (int step = 0; step < batchSize; step++) {
+				top->service_mode = service_mode ? 1 : 0;
+				verilate();
+			}
+		}
+	}
+
 	// Setup video output
 	if (video.Initialise(windowTitle) == 1) { return 1; }
 

@@ -283,69 +283,51 @@ module playfield(
     end
 `endif
 
-    // 74191 counters at C5 and E8. PHP is loaded from BD when CPU writes
-    // $0120 (scroll_x), then free-runs at Clk6 across the visible region
-    // of each scanline. With an 8-bit width and exactly 256 increments
-    // per scanline (the visible H256=0 half of our 512-tick line), PHP
-    // wraps cleanly each scanline so it acts as scroll_x without needing
-    // an explicit per-line reset.
+    // 74191 counters at C5 and E8. Sheet 4 gates the counter enable with
+    // VBLANK/256H; in this synchronizer polarity that is H256 while not
+    // in retrace. That gives exactly 256 Clk6 increments per scanline, so
+    // the 8-bit PHP counter wraps back to the same scroll_x phase every
+    // line. Advancing PHP for the whole 320-pixel nonblank interval adds
+    // 64 counts per line and makes the rotated playfield collapse into
+    // bands.
     //
-    // Original VHDL gate was `((not H256) nand VBlank) = '0'` which
-    // means H256=0 AND VBlank=1 — written for the schematic's VBlank
-    // polarity where VBlank=1 means visible. Our synchronizer follows
-    // the MiSTer convention (VBlank=1 means retrace), so the equivalent
-    // gate is H256=0 AND VBlank=0.
-    // Per the MAME firetrk_state driver, scroll_x and scroll_y are
-    // continuous tilemap scroll registers (`set_scrollx(*m_scroll_x-37)`,
-    // `set_scrolly(*m_scroll_y)`). On real hardware that is implemented
-    // as: CPU writes scroll_x to PHP via the PHP_Load strobe, then PHP
-    // free-runs at the pixel rate during the *visible* portion of each
-    // scanline. With 256 visible pixels per scanline, an 8-bit PHP wraps
-    // exactly once and so re-aligns to scroll_x at the start of the
-    // next line — that is what gives a stable horizontal scroll.
-    //
-    // Visible region marker: in our synchronizer, H256=1 corresponds to
-    // the visible 512 h_counter ticks (256 Clk6 posedges). Gating PHP++
-    // on H256 gives exactly 256 increments per scanline.
-    //
-    // The original VHDL gate `((not H256) nand VBlank) = '0'` is the
-    // same condition once you flip VBlank polarity (the schematic uses
-    // VBlank=1 for "visible", we use VBlank=1 for retrace) AND realise
-    // it's H256=1 (not H256=0) that names the visible window in our
-    // synchronizer's polarity.
-    // Gate PHP increment on the actual visible-H window (HBlank=0). The
-    // earlier H256 gate only covered 256 of the 320 visible pixels per
-    // line that MAME's set_raw says the real PCB drives — the missing 64
-    // pixels collapsed onto a single tile column and produced a band of
-    // repeated content (visible as one half of the rotated frame being
-    // dense trees while the other half was correct). The visible region
-    // in our synchronizer is `~hblank_int`, which already encodes the
-    // 320-pixel visible width of MAME's set_raw.
-    // MAME's superbug renderer applies `set_scrollx(scroll_x - 37)` — a
-    // 37-pixel constant shift that comes from where the real-PCB
-    // schematic positions the start of PHP relative to the visible
-    // scan. Our PHP_Load gets the raw byte from the CPU, which leaves
-    // us 37 pixels right of MAME at any given scroll_x. Subtract here
-    // so the rendered position matches MAME (and the AVI reference).
+    // The simulated CPU currently writes the scroll registers later than
+    // real hardware would inside VBlank, so latch the CPU's write and
+    // apply it on the VBlank falling edge. MAME renders with frame-level
+    // scroll registers (`scroll_x - 37`, `scroll_y`), which this matches.
+    reg [7:0] PHP_load_value;
+    reg       prev_VBlank_php;
     always @(posedge Clk6)
     begin: PHP_count
+        prev_VBlank_php <= VBlank;
         if (PHP_Load_n == 1'b0)
-            PHP <= BD - 8'd37;
-        else if (~HBlank)
+            PHP_load_value <= BD;
+
+        if (prev_VBlank_php & ~VBlank)
+            PHP <= PHP_load_value - 8'd37;
+        else if (H256 & ~VBlank)
             PHP <= PHP + 1;
     end
     
     // 74191 counters at D5 and F8.
     // Clock is HSync (one increment per scanline), NOT Clk6 — original VHDL
-    // says `rising_edge(HSync)`. The X-HDL port mistranslated this to Clk6
-    // which made PVP cycle hundreds of times per scanline, sweeping the
-    // playfield-RAM address mid-scanline and turning the display into
-    // averaged grey noise.
-    always @(posedge HSync)
+    // says `rising_edge(HSync)`. Model it as a Clk6-domain HSync edge
+    // detector so the Verilator schedule stays single-clocked. Like PHP,
+    // defer CPU writes to the VBlank falling edge so late simulated CPU
+    // writes do not reload PVP halfway through the displayed frame.
+    reg [7:0] PVP_load_value;
+    reg       prev_HSync_pvp;
+    reg       prev_VBlank_pvp;
+    always @(posedge Clk6)
     begin: PVP_count
+        prev_HSync_pvp  <= HSync;
+        prev_VBlank_pvp <= VBlank;
         if (PVP_Load_n == 1'b0)
-            PVP <= BD;
-        else if (VBlank == 1'b0)
+            PVP_load_value <= BD;
+
+        if (prev_VBlank_pvp & ~VBlank)
+            PVP <= PVP_load_value;
+        else if (HSync & ~prev_HSync_pvp & ~VBlank)
             PVP <= PVP + 1;
     end
     
@@ -443,6 +425,3 @@ module playfield(
     assign SkidCode_n = PD[3];
     
 endmodule
-
-
-
