@@ -111,7 +111,12 @@ BVMA <= VMA; --((not BA(14)) and VMA);
 
 --Mux_select <= not(BA10and8 and BA12nor11 and BVMA);
 --Mux_select <= not(BA10and8 and BA12nor11 and VMA);
-Mux_select <= '0' when BVMA = '1' and BA(12 downto 10) = "001" and BA(8) = '1' else '1';
+-- Mux_select=1 routes the CPU bus to alpha-RAM during $0400-$041F:
+-- BA(12:10)=001, BA(8)=0. The original form below had BA(8)='1' (which
+-- matches the playfield range $0500-$05FF instead) AND inverted '0'/'1'
+-- selectors, so the display read whatever was on the CPU bus at the
+-- time and every alpha cell rendered the same character.
+Mux_select <= '1' when BVMA = '1' and BA(12 downto 10) = "001" and BA(8) = '0' else '0';
 
 
 

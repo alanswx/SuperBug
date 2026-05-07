@@ -162,18 +162,22 @@ port map(
 	);
 
 	
--- CE lines are labeled strangely on schematic
+-- CE lines are labeled strangely on schematic.
+-- Per MAME's tiles ROM region layout (F5 at $000, H5 at $400, E5 at
+-- $800/$C00) the mapping is 00->F5, 01->H5, 10->E5, 11->E5. The
+-- original VHDL had 01 and 10 swapped so half the playfield codes
+-- pulled the wrong tile ROM.
 PF_ROM_mux: process(PD, E5_Dout, F5_Dout, H5_Dout)
 begin
    Vid <= (others => '0');
    case PD(5 downto 4) is
 		when "00" => Vid <= F5_Dout;
-		when "01" => Vid <= E5_Dout;
-      when "10" => Vid <= H5_Dout;
+		when "01" => Vid <= H5_Dout;
+      when "10" => Vid <= E5_Dout;
       when "11" => Vid <= E5_Dout;
       when others => null;
    end case;
-end process;	
+end process;
 	
 	
 

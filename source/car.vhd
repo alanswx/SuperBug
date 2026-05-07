@@ -134,7 +134,12 @@ port map(
 
 
 	
-R_Sel <= (R1 & R0);
+-- Per MAME's superbug_state::draw_car: code = ~*m_car_rot & 0x03;
+-- bits[1:0] of car_rot are bit-inverted before picking the sprite
+-- frame in the K6 ROM packing. Without the invert, frames 0..3 are
+-- selected in reverse, so the car points the wrong way and rotates
+-- the wrong direction as the player turns.
+R_Sel <= ((not R1) & (not R0));
 K7: process(CarROM_Dout, R_Sel, CarEna_n)
 begin
 	if CarEna_n = '0' then
