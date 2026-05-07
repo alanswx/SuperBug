@@ -157,15 +157,34 @@ void save_screenshot(int frame_number) {
 	// Use the SimVideo instance dimensions, not the file-scope globals in
 	// sim_video.cpp (those keep their default 512x512 because the constructor
 	// shadows them with class members of the same name).
-	int w = video.output_width;
-	int h = video.output_height;
+	// Buffer is video.output_width × video.output_height. With ROT270 the
+	// content occupies a smaller sub-region inside that buffer (content
+	// width = original-TV-height, content height = original-TV-width).
+	// Crop to actual content extent so the saved PNG doesn't have a wide
+	// grey strip on the right.
+	int buf_w = video.output_width;
+	int buf_h = video.output_height;
+	int w, h;
+	if (video.output_rotate == -1 || video.output_rotate == 1) {
+		// Rotated 90°: content extent is the swap of the original render
+		// dimensions. Use stats_yMax (tracks the highest count_line which
+		// became x_display under -1 rotation) to crop to content width.
+		w = video.stats_yMax > 0 ? video.stats_yMax : buf_h;
+		h = buf_h;
+	} else {
+		w = buf_w;
+		h = buf_h;
+	}
+	if (w > buf_w) w = buf_w;
+	if (h > buf_h) h = buf_h;
+
 	uint8_t* rgb = (uint8_t*)malloc(w * h * 3);
 	if (!rgb) { fprintf(stderr, "screenshot: malloc failed\n"); return; }
 
 	// video.Clock writes pixels as 0xFF000000 | B<<16 | G<<8 | R (ABGR-in-uint32).
 	for (int y = 0; y < h; y++) {
 		for (int x = 0; x < w; x++) {
-			uint32_t p = output_ptr[y * w + x];
+			uint32_t p = output_ptr[y * buf_w + x];   // stride = buffer width
 			int di = (y * w + x) * 3;
 			rgb[di + 0] = (p >> 0)  & 0xFF;
 			rgb[di + 1] = (p >> 8)  & 0xFF;
