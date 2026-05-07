@@ -220,7 +220,13 @@ module playfield(
     // gate was on VBlank only, which assumed the program writes finish
     // inside the vertical retrace — true on the real 6800 (~750 kHz)
     // but not in our cpu68 sim (much higher cycles/instr).
-    assign PF_RAM_Adr = PfldRAM ? BA[7:0] : {PVP[7:4], PHP[7:4]};
+    //
+    // Swap PHP/PVP order so that tile index = row*16 + col with row =
+    // horizontal pixel position (not vertical scanline). This matches
+    // the way the program lays out its tilemap (writing trees in
+    // BA[7:5]=column 0/15 area, road in middle columns) so the road
+    // runs vertically post-rotation in MAME's orientation.
+    assign PF_RAM_Adr = PfldRAM ? BA[7:0] : {PHP[7:4], PVP[7:4]};
     
     // Check data bus paths carefully
     assign PFRAM_Din = (BD_en == 1'b0) ? BD : 

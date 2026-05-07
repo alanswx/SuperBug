@@ -88,9 +88,13 @@ const int input_menu = 12;
 
 // Video
 // -----
+// Buffer must be tall enough to fit the rotated TV image. Pre-rotation
+// content is ~256 wide × ~240 tall; ROT270 = 90° CCW maps original-X to
+// display-Y, so display-Y range needs to cover original-X range (256).
+// Use 320×320 to be safe.
 #define VGA_WIDTH 320
-#define VGA_HEIGHT 240
-#define VGA_ROTATE -1  // 90 degrees anti-clockwise; matches MAME's ROT270 for superbug (vertical cabinet)
+#define VGA_HEIGHT 320
+#define VGA_ROTATE -1  // 90 degrees clockwise; matches MAME's ROT270 for superbug (vertical cabinet)
 #define VGA_SCALE_X vga_scale
 #define VGA_SCALE_Y vga_scale
 SimVideo video(VGA_WIDTH, VGA_HEIGHT, VGA_ROTATE);
