@@ -353,12 +353,18 @@ module playfield(
         else
             VidShift <= {1'b0, VidShift[3:1]};
     end
-    // ROM bit = 1 means LIT pixel (per MAME's gfx_layout for tiles).
-    // Original VHDL was `Pf <= VidShift(0) nor PfWndo_n` which inverts:
-    // bit=1 -> Pf=0 (no draw). That matches schematic NOR gate output but
-    // assumes the ROM data was 0=foreground, which contradicts MAME's
-    // interpretation. Use AND of bit=1 and PfWndo=1 instead.
-    assign Pf = (VidShift[0] & ~PfWndo_n);
+    // Schematic NOR: Pf = ~(VidShift[0] | PfWndo_n).
+    //
+    // Combined with the mixer's `PCC1Pfld = PCC1 & Pfld` /
+    // `PCC2Pfld = PCC2 & Pfld` gates, this implements MAME's palette
+    // interpretation: color0 (= ROM bit=0) is the *foreground* color
+    // chosen by PCC1/PCC2, and color1 (= ROM bit=1) is always BLACK.
+    //
+    // For palette 0 (PCC1=PCC2=0) every pixel is BLACK regardless of
+    // bit — that's the empty-road tile. For palette 3 (PCC1=PCC2=1)
+    // bit=0 gives WHITE (lane markers), bit=1 stays BLACK. Matches
+    // firetrk_state::palette()'s colortable_source for tilemap[0].
+    assign Pf = ~(VidShift[0] | PfWndo_n);
     assign LoadPd = (PHP[0] & PHP[1]);
     
     //L9
