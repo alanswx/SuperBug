@@ -322,13 +322,12 @@ int verilate() {
 					        "stats_xMax=%d stats_yMax=%d (visible region per scanline x lines per frame)\n",
 					        video.stats_xMax, video.stats_yMax);
 					fprintf(stderr,
-					        "Flash=%d Attract=%d PHP=%02X PVP=%02X PD=%02X "
+					        "Flash=%d Attract=%d PHP=%02X PVP=%02X "
 					        "ScrollX=%02X ScrollY=%02X\n",
 					        root->emu__DOT__superbug__DOT__Flash,
 					        root->emu__DOT__superbug__DOT__Attract,
 					        root->emu__DOT__superbug__DOT__Playfield__DOT__PHP,
 					        root->emu__DOT__superbug__DOT__Playfield__DOT__PVP,
-					        root->emu__DOT__superbug__DOT__Playfield__DOT__PD,
 					        root->emu__DOT__superbug__DOT__CPU__DOT__scroll_x_dbg,
 					        root->emu__DOT__superbug__DOT__CPU__DOT__scroll_y_dbg);
 					fprintf(stderr,

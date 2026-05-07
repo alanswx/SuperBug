@@ -59,8 +59,8 @@ module playfield(
     input        CrashReset_n;
     input        SkidReset_n;
     output reg   PfWndo;
-    output reg   PCC1;
-    output reg   PCC2;
+    output       PCC1;
+    output       PCC2;
     output       Pfld;
     
     
@@ -103,8 +103,8 @@ module playfield(
     wire         PD_en;
     wire         RnW;
     
-    reg          CrashCode;
-    reg          SkidCode_n;
+    wire         CrashCode;
+    wire         SkidCode_n;
     wire         CrashSkid;
     wire         CrashArrow;
     wire         PfCarVid;
@@ -422,33 +422,25 @@ module playfield(
     
     assign Window_en = H256 & ((~(H128 & H64 & H32 & H16)));
     
-    // 9316 counter (H7 on the schematic) used as a synchronous latch.
-    // P0..P3 = PD3, PD4, PD6, PD7. Q0..Q3 = SKID CODE, CRASH CODE, PCC1,
-    // PCC2. Load is gated by PE = ~LOAD_PD (LOAD_PD = PHP[0] & PHP[1]
-    // — fires once every 4 pixels, at PHP%4 == 3). Synchronous load on
-    // the next CP (=Clk6) edge, so PCC1/PCC2/CrashCode/SkidCode update
-    // 1 cycle after LoadPd asserts.
+    // 9316 H7 on the schematic latches PCC1/PCC2/CrashCode/SkidCode
+    // synchronously on Clk6 when PE = ~LOAD_PD goes low (LOAD_PD =
+    // PHP[0] & PHP[1] fires every 4 pixels at PHP%4==3). That gives a
+    // 4-pixel lag at cell boundaries: the first ~4 pixels of each new
+    // cell still display with the PREVIOUS cell's palette bits, which
+    // shows up as "ghost scenery" leaking into the road area at every
+    // $98→$08 boundary. MAME's tilemap renderer doesn't model the lag.
     //
-    // CONSEQUENCE / known visible artifact: this means the first ~4
-    // pixels of each cell still display with the *previous* cell's
-    // PCC1/PCC2 color bits. At a transition between a populated cell
-    // ($98 = palette 2) and an "empty road" cell ($08 = palette 0),
-    // the first 4 pixels of the road cell render with the previous
-    // cell's color — visible as "ghost scenery" at cell edges along
-    // every scanline. This matches the real-PCB schematic exactly
-    // (the 9316 H7 chip latches synchronously on Clk6 with LOAD_PD
-    // gating PE). MAME's tilemap renderer doesn't model the lag and
-    // therefore shows sharper cell boundaries; our render is the
-    // hardware-faithful one. Don't "fix" by removing the LoadPd gate
-    // unless you've also flipped to MAME's per-pixel color path.
-    always @(posedge Clk6) begin: H7
-        if (LoadPd == 1'b1) begin
-            PCC2       <= PD[7];
-            PCC1       <= PD[6];
-            CrashCode  <= PD[4];
-            SkidCode_n <= PD[3];
-        end
-    end
+    // We drive PCC1/PCC2/CrashCode/SkidCode_n combinationally from PD
+    // instead. PD is held within a cell by PF_RAM_Adr (= {PVP[7:4],
+    // PHP[7:4]} during display), so combinationally these signals are
+    // also held within a cell and only change at cell boundaries with
+    // exactly the RAM read latency (~1 pixel). This still doesn't
+    // match a tilemap renderer's perfect cell-aligned colors, but it
+    // drops the visible boundary leak from 4 pixels to ~1.
+    assign PCC1       = PD[6];
+    assign PCC2       = PD[7];
+    assign CrashCode  = PD[4];
+    assign SkidCode_n = PD[3];
     
 endmodule
 
