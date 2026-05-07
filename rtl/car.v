@@ -159,36 +159,35 @@ module car(
             CarVideo <= 1'b0;
     end
     
-    //M7a: process(HCount)
-    
-    always @(posedge H16)
-    begin: M7a
-        
-            // Real hardware uses nand then Q_, same result 
-            M7Qa <= H256 & H128n & H64 & H32;
-    end
-    
-    //M7b: process(VCount)
-    
-    always @(posedge V8)
-    begin: M7b
-        		// Clocked by 8H
-            // Real hardware uses nand then Q_, same result 
-            M7Qb <= V128n & V64 & V32;
+    // M7a/M7b — sprite-window latches. Schematic clocks them on the
+    // rising edge of H16 / V8 respectively, but in Verilator that
+    // produces multi-edge sensitivity that can fire at clk_sys edges
+    // unrelated to the H/V counter — we were seeing the latched window
+    // hold past its real geometry, painting a ghost copy of the car
+    // sprite in the upper-right of the screen. Re-clock both on Clk6
+    // with explicit edge detection of H16 / V8.
+    reg prev_H16, prev_V8;
+    always @(posedge Clk6) begin
+        prev_H16 <= H16;
+        prev_V8  <= V8;
+        if (H16 & ~prev_H16) M7Qa <= H256 & H128n & H64 & H32;
+        if (V8  & ~prev_V8 ) M7Qb <= V128n & V64 & V32;
     end
     assign CarEna_n = ~(M7Qa & M7Qb);
     
-    // Latch at L4
-    
-    always @(posedge CarRot_n)
-    begin: L4
-        
-        begin
-            R0 <= BD[0];
-            R1 <= BD[1];
-            BD2_Sel <= BD[2];
-            BD3_Sel <= BD[3];
-            BD4_Sel <= BD[4];
+    // L4 — car rotation register (CPU writes to \$0180).
+    // Schematic uses rising edge of CarRot_n; Verilator's multi-edge
+    // semantics can re-fire this at unrelated clk_sys edges. Use a
+    // proper edge detector on Clk6 instead.
+    reg prev_CarRot_n;
+    always @(posedge Clk6) begin: L4
+        prev_CarRot_n <= CarRot_n;
+        if (CarRot_n & ~prev_CarRot_n) begin
+            R0       <= BD[0];
+            R1       <= BD[1];
+            BD2_Sel  <= BD[2];
+            BD3_Sel  <= BD[3];
+            BD4_Sel  <= BD[4];
         end
     end
     
