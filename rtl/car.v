@@ -127,7 +127,18 @@ module car(
         .q(CarROM_Dout)
     );
     
-    assign R_Sel = ({R1, R0});
+    // Frame-select index. Per MAME's superbug_state::draw_car:
+    //   code = ~*m_car_rot & 0x03;
+    // i.e. bits [1:0] of the car_rot register are bit-inverted before
+    // being used to pick the sprite frame. Our K6 ROM packs 4 sprite
+    // frames into the 4 bits at each ROM word — bit 0 holds frame 0's
+    // pixel, bit 3 holds frame 3's. So R_Sel must be ~{R1,R0} to match
+    // MAME's frame numbering. Without the invert, CPU writes of 00..03
+    // to \$0180 picked bits 0..3 (frames 0..3 in our numbering), which
+    // is the *opposite* of what the program intends — the car points
+    // the wrong direction for any given rotation value, and as the
+    // player turns left the sprite rotates right and vice versa.
+    assign R_Sel = ({~R1, ~R0});
     
     always @(CarROM_Dout or R_Sel or CarEna_n)
     begin: K7
