@@ -319,6 +319,9 @@ int verilate() {
 				if (dump_ram_at_frame >= 0 && video.count_frame == dump_ram_at_frame) {
 					auto* root = top->rootp;
 					fprintf(stderr,
+					        "stats_xMax=%d stats_yMax=%d (visible region per scanline x lines per frame)\n",
+					        video.stats_xMax, video.stats_yMax);
+					fprintf(stderr,
 					        "Flash=%d Attract=%d PHP=%02X PVP=%02X PD=%02X "
 					        "ScrollX=%02X ScrollY=%02X\n",
 					        root->emu__DOT__superbug__DOT__Flash,
@@ -328,6 +331,10 @@ int verilate() {
 					        root->emu__DOT__superbug__DOT__Playfield__DOT__PD,
 					        root->emu__DOT__superbug__DOT__CPU__DOT__scroll_x_dbg,
 					        root->emu__DOT__superbug__DOT__CPU__DOT__scroll_y_dbg);
+					fprintf(stderr,
+					        "scroll_x writes since reset = %u, scroll_y writes = %u\n",
+					        root->emu__DOT__superbug__DOT__CPU__DOT__scroll_x_writes,
+					        root->emu__DOT__superbug__DOT__CPU__DOT__scroll_y_writes);
 					fprintf(stderr, "=== alpha-num RAM (P3, 128 bytes, 32 used) at frame %d ===\n", dump_ram_at_frame);
 					for (int i = 0; i < 32; i++) {
 						fprintf(stderr, " %02X", root->emu__DOT__superbug__DOT__Alpha__DOT__P3_RAM__DOT__mem[i]);

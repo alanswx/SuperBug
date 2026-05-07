@@ -344,9 +344,20 @@ module cpu_mem(
     // observation point and has no functional effect.
     reg [7:0] scroll_x_dbg;
     reg [7:0] scroll_y_dbg;
+    // Counts of how many times each strobe has fired since reset.
+    // Helps tell the difference between "CPU wrote once at boot" and
+    // "CPU writes every frame" — both produce the same latched value
+    // when the value never changes (e.g. scroll_y = $08 forever).
+    reg [15:0] scroll_x_writes;
+    reg [15:0] scroll_y_writes;
+    reg PHP_Load_n_prev, PVP_Load_n_prev;
     always @(posedge Clk6) begin
+        PHP_Load_n_prev <= PHP_Load_n;
+        PVP_Load_n_prev <= PVP_Load_n;
         if (~PHP_Load_n) scroll_x_dbg <= CPU_Dout;
         if (~PVP_Load_n) scroll_y_dbg <= CPU_Dout;
+        if (PHP_Load_n_prev && ~PHP_Load_n) scroll_x_writes <= scroll_x_writes + 1;
+        if (PVP_Load_n_prev && ~PVP_Load_n) scroll_y_writes <= scroll_y_writes + 1;
     end
     assign CrashReset_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b010) ? 1'b0 : 
                           1'b1;
