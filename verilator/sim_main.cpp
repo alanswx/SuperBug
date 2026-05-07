@@ -90,7 +90,7 @@ const int input_menu = 12;
 // -----
 #define VGA_WIDTH 320
 #define VGA_HEIGHT 240
-#define VGA_ROTATE 0  // 90 degrees anti-clockwise
+#define VGA_ROTATE -1  // 90 degrees anti-clockwise; matches MAME's ROT270 for superbug (vertical cabinet)
 #define VGA_SCALE_X vga_scale
 #define VGA_SCALE_Y vga_scale
 SimVideo video(VGA_WIDTH, VGA_HEIGHT, VGA_ROTATE);
