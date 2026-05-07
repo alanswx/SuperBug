@@ -41,3 +41,16 @@ qar_info.json
 .vs
 Debug
 Release
+
+# Build / sim artifacts
+.DS_Store
+verilator/obj_dir/
+verilator/screenshot_frame_*.png
+verilator/imgui.ini
+sim/work/
+sim/trace_work/
+sim/ext_work/
+sim/sb_trace_tb
+sim/extname_test
+sim/e~*
+verilator/superbug.zip
