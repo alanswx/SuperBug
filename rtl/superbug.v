@@ -275,6 +275,7 @@ module superbug(
         .HCount(HCount),
         .Sys_En(Sys_en),
         .HSync(HSync),
+        .HBlank(HBlank),
         .VBlank(VBlank),
         .ArrowOff_n(ArrowOff_n),
         .CarVideo(CarVideo),

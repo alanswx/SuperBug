@@ -79,6 +79,7 @@ module emu (
 	output	[7:0]	dbg_accb,
 	output	[7:0]	dbg_cc,
 	
+	input			service_mode,	// 1 = self-test (Test_I active-low low)
 	input			ioctl_download,
 	input			ioctl_wr,
 	input [24:0]		ioctl_addr,
@@ -245,7 +246,7 @@ superbug superbug(
         .Gear1_I(gear1),
         .Gear2_I(gear2),
         .Gear3_I(gear3),
-        .Test_I (1'b1),     // active-low self-test switch: 1 = OFF (normal play/attract)
+        .Test_I (~service_mode),     // active-low: 0 = self-test, 1 = normal
         .Steer_1A_I(steer[1]),
         .Steer_1B_I(steer[0]),
         .Lamp1_O(lamp),

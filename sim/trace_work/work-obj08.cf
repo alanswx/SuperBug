@@ -1,0 +1,79 @@
+v 4
+file "/Users/alans/Documents/development/SuperBug/sim/" "sb_trace_tb.vhd" "dadcf4d55aa622179245f2b61005f3386e98fc6b" "20260506183852.167":
+  entity sb_trace_tb at 9( 378) + 0 on 61;
+  architecture behavior of sb_trace_tb at 17( 508) + 0 on 62;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../source/motor.vhd" "215f62aa129818c60d114f33f1fab0aee4322358" "20260506183852.016":
+  entity enginesound at 21( 903) + 0 on 57;
+  architecture rtl of enginesound at 38( 1355) + 0 on 58;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../source/deltasigma.vhd" "8f2935689103b60a30be26cc109d735e57652c5f" "20260506183851.944":
+  entity deltasigma at 20( 489) + 0 on 53;
+  architecture behavioral of deltasigma at 41( 1010) + 0 on 54;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../source/playfield.vhd" "e9b7fbe3faa4ecd7a2e4a794d5d91584d6a294bf" "20260506183851.770":
+  entity playfield at 19( 630) + 0 on 49;
+  architecture rtl of playfield at 51( 1492) + 0 on 50;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../source/car.vhd" "e98fef95723d09a29810844105597532ea7e35b9" "20260506183851.646":
+  entity car at 20( 680) + 0 on 45;
+  architecture rtl of car at 39( 1147) + 0 on 46;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../source/mixer.vhd" "4d2e19983104c34eb0e6b06c495219913b3ced34" "20260506183851.529":
+  entity mixer at 20( 714) + 0 on 41;
+  architecture rtl of mixer at 44( 1326) + 0 on 42;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../source/sync.vhd" "1fde9d11d5b7402127b9896877f4488178814008" "20260506183851.328":
+  entity synchronizer at 17( 649) + 0 on 37;
+  architecture rtl of synchronizer at 36( 1146) + 0 on 38;
+file "/Users/alans/Documents/development/SuperBug/sim/" "cpu68_traced.vhd" "03c8820c224eaa29acb15031192d1f024e64dbb2" "20260506183850.120":
+  entity cpu68 at 63( 2400) + 0 on 33;
+  architecture cpu_arch of cpu68 at 88( 3040) + 0 on 34;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../roms/Altera/ROM_M3.vhd" "1e3317a3eb07bf5ab663473599734f1f738f580f" "20260506183850.050":
+  entity rom_m3 at 36( 1410) + 0 on 29;
+  architecture syn of rom_m3 at 52( 1674) + 0 on 30;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../roms/Altera/ROM_F5.vhd" "467efe51e45d3a259ea9375e52245377bb9f8734" "20260506183849.989":
+  entity rom_f5 at 36( 1410) + 0 on 25;
+  architecture syn of rom_f5 at 52( 1674) + 0 on 26;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../roms/Altera/ROM_D1.vhd" "6d032700ca1ccc0b35dad3820ab643b2fd28bbba" "20260506183849.928":
+  entity rom_d1 at 36( 1410) + 0 on 21;
+  architecture syn of rom_d1 at 52( 1675) + 0 on 22;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../roms/Altera/ROM_A1.vhd" "e78689c24aeee80fd76270791c2bb4d3b6cb2d1e" "20260506183849.867":
+  entity rom_a1 at 36( 1410) + 0 on 17;
+  architecture syn of rom_a1 at 52( 1675) + 0 on 18;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../source/Altera/ram256.vhd" "fa0d226aad36177ed8329665599e6abf9996f2c2" "20260506183849.805":
+  entity ram256 at 36( 1410) + 0 on 13;
+  architecture syn of ram256 at 54( 1745) + 0 on 14;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../source/Altera/ram128.vhd" "41eb958b4e777faf1a3037f48f60afc7735b8618" "20260506183849.737":
+  entity ram128 at 36( 1415) + 0 on 11;
+  architecture syn of ram128 at 54( 1753) + 0 on 12;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../roms/Altera/K6_ROM.vhd" "e579fc8cd8e6769f10792bc989ee087aa6d2ed02" "20260506183849.836":
+  entity k6_rom at 36( 1410) + 0 on 15;
+  architecture syn of k6_rom at 52( 1674) + 0 on 16;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../roms/Altera/ROM_C1.vhd" "a9c602f6119fcb38bbf2a21823adb6464def3f8b" "20260506183849.898":
+  entity rom_c1 at 36( 1410) + 0 on 19;
+  architecture syn of rom_c1 at 52( 1675) + 0 on 20;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../roms/Altera/ROM_E5.vhd" "6ad26394309c27afa9c2fed6fa9e7a9dde2acd48" "20260506183849.958":
+  entity rom_e5 at 36( 1410) + 0 on 23;
+  architecture syn of rom_e5 at 52( 1674) + 0 on 24;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../roms/Altera/ROM_H5.vhd" "e6d58000e8dd77e0ec1298ca88c94fb5cbb58951" "20260506183850.020":
+  entity rom_h5 at 36( 1410) + 0 on 27;
+  architecture syn of rom_h5 at 52( 1674) + 0 on 28;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../roms/Altera/ROM_N3.vhd" "640460a67b4680a9db1a1289657ece3f373ddd19" "20260506183850.081":
+  entity rom_n3 at 36( 1410) + 0 on 31;
+  architecture syn of rom_n3 at 52( 1674) + 0 on 32;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../source/sync_prom.vhd" "2c6f616ac3cbc2c7d8159947cfba6ff176dbadc2" "20260506183851.281":
+  entity prom at 5( 219) + 0 on 35;
+  architecture rtl of prom at 16( 408) + 0 on 36;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../source/cpu_mem.vhd" "d847eb901645a5dd083519787e9380bcae7d5ded" "20260506183851.410":
+  entity cpu_mem at 16( 597) + 0 on 39;
+  architecture rtl of cpu_mem at 54( 1777) + 0 on 40;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../source/alphanumerics.vhd" "fb31677fb3190b99d82ec70c1820367d7aa70c8a" "20260506183851.568":
+  entity alpha_numerics at 19( 640) + 0 on 43;
+  architecture rtl of alpha_numerics at 41( 1213) + 0 on 44;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../source/FF109.vhdl" "b8ea65686d01818e20da46eaa4dea580735e39f8" "20260506183851.748":
+  entity jk_ff_vhdl at 1( 0) + 0 on 47;
+  architecture behavioral of jk_ff_vhdl at 13( 271) + 0 on 48;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../source/inputs.vhd" "add7cff1e20a2169c7dfd66484c1c887d89089e5" "20260506183851.879":
+  entity input at 16( 592) + 0 on 51;
+  architecture rtl of input at 45( 1666) + 0 on 52;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../source/screech.vhd" "bf9c604df25298d47d6c79a8764988eacd2c01f8" "20260506183851.995":
+  entity tire_screech at 20( 867) + 0 on 55;
+  architecture rtl of tire_screech at 39( 1504) + 0 on 56;
+file "/Users/alans/Documents/development/SuperBug/sim/" "../source/SuperBug.vhd" "2f54960fa0a9179721902a658acd5f9cc7c03e5a" "20260506183852.085":
+  entity superbug at 23( 840) + 0 on 59;
+  architecture rtl of superbug at 67( 2572) + 0 on 60;

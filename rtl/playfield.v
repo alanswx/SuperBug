@@ -22,6 +22,7 @@ module playfield(
     HCount,
     Sys_En,
     HSync,
+    HBlank,
     VBlank,
     ArrowOff_n,
     CarVideo,
@@ -45,6 +46,7 @@ module playfield(
     input [8:0]  HCount;
     input        Sys_En;
     input        HSync;
+    input        HBlank;
     input        VBlank;
     input        ArrowOff_n;
     input        CarVideo;
@@ -302,11 +304,19 @@ module playfield(
     // VBlank=1 for "visible", we use VBlank=1 for retrace) AND realise
     // it's H256=1 (not H256=0) that names the visible window in our
     // synchronizer's polarity.
+    // Gate PHP increment on the actual visible-H window (HBlank=0). The
+    // earlier H256 gate only covered 256 of the 320 visible pixels per
+    // line that MAME's set_raw says the real PCB drives — the missing 64
+    // pixels collapsed onto a single tile column and produced a band of
+    // repeated content (visible as one half of the rotated frame being
+    // dense trees while the other half was correct). The visible region
+    // in our synchronizer is `~hblank_int`, which already encodes the
+    // 320-pixel visible width of MAME's set_raw.
     always @(posedge Clk6)
     begin: PHP_count
         if (PHP_Load_n == 1'b0)
             PHP <= BD;
-        else if (H256)
+        else if (~HBlank)
             PHP <= PHP + 1;
     end
     
@@ -378,20 +388,20 @@ module playfield(
     assign Pf = ~(VidShift[0] | PfWndo_n);
     assign LoadPd = (PHP[0] & PHP[1]);
     
-    //L9
-    // Real hardware uses VBlank_n, no need to create a separate inverted signal
-    
-    always @(posedge Clk6)
-    begin: WindowLatch
-        if (VBlank == 1'b1)
-        begin
-            PfWndo <= 1'b0;
+    // L9 — PfWndo D-FF.
+    // Schematic clocks this on rising edge of H8 with VBlank=1 as async
+    // clear. Updating PfWndo every Clk6 (as the X-HDL port did) makes
+    // the window edge slide by up to one Clk6 cycle and clips the
+    // leftmost playfield column. Use H8 edge detection on Clk6 instead.
+    reg prev_H8_pfwndo;
+    always @(posedge Clk6) begin: WindowLatch
+        prev_H8_pfwndo <= H8;
+        if (VBlank) begin
+            PfWndo   <= 1'b0;
             PfWndo_n <= 1'b1;
-        end
-        else 
-        begin
-            PfWndo <= Window_en;
-            PfWndo_n <= ((~Window_en));
+        end else if (H8 & ~prev_H8_pfwndo) begin
+            PfWndo   <= Window_en;
+            PfWndo_n <= ~Window_en;
         end
     end
     

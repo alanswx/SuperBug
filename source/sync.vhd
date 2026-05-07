@@ -124,10 +124,24 @@ end process;
 -- Outputs of sync PROM
 --vblank_s <= sync_reg(3);
 --vblank_n_s <= not sync_reg(3);
-vreset <= sync_reg(2);
-vreset_n <= not sync_reg(2);
-vblank <= sync_reg(1);
-vsync <= sync_reg(0);
+-- The schematic PROM-address composition above omits V32 (8-bit address
+-- is sync_reg(3) & V128 & V64 & V16 & V8 & V4 & V2 & V1), so two
+-- distinct vcounts alias to the same PROM entry and VBLANK pulses
+-- twice per frame -> nested NMI -> stack corruption -> CPU dies.
+-- Both the original VHDL and the X-HDL Verilog port inherited this
+-- bug. Until/unless the correct address composition is identified,
+-- generate VBLANK/VSYNC/VRESET algorithmically from v_counter, matching
+-- MAME's firetrk_state::scanline() callback (256-line frame, vcount
+-- wraps naturally on the 8-bit counter):
+--   VBLANK active for vcount >= 240
+--   VSYNC pulse during vcount 242..244
+-- The PROM is still instantiated above to keep the prom_address wire
+-- for future debugging; sync_reg outputs below are ignored.
+vreset   <= '0';
+vreset_n <= '1';
+vblank   <= '1' when v_counter >= "11110000" else '0';                   -- vcount >= 240
+vsync    <= '1' when v_counter >= "11110010" and v_counter <= "11110100" -- 242..244
+            else '0';
 
 -- A pair of D type flip-flops that generate the Hsync signal
 Hsync_1: process(H256_n, H32)

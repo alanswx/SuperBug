@@ -138,6 +138,7 @@ bool screenshot_mode = false;
 std::string screenshot_name_override;
 int stop_at_frame = -1;
 bool headless_mode = false;
+bool service_mode = false;  // --service: hold the self-test switch active
 int dump_ram_at_frame = -1;
 
 // CPU trace
@@ -388,11 +389,14 @@ int main(int argc, char** argv, char** env) {
 			trace_max = atoi(argv[++i]);
 		} else if (!strcmp(argv[i], "--dump-ram") && i + 1 < argc) {
 			dump_ram_at_frame = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "--service")) {
+			service_mode = true;
 		} else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
 			printf("Super Bug Verilator sim\n"
 			       "  --screenshot <frames>     comma-separated frame numbers\n"
 			       "  --screenshot-name <path>  override output path (single shot)\n"
 			       "  --stop-at-frame <n>       exit after frame n\n"
+			       "  --service                 hold self-test switch active (matches MAME selftest.avi)\n"
 			       "  --headless                hint for batch mode (still opens window)\n");
 			return 0;
 		}
@@ -653,6 +657,7 @@ fprintf(stderr,"filePath: %s\n",filePath.c_str());
 			if (input.inputs[i]) { top->joystick_0 |= (1 << i); }
 		}
 		top->joystick_1 = top->joystick_0;
+		top->service_mode = service_mode ? 1 : 0;
 
 		/*top->joystick_analog_0 += 1;
 		top->joystick_analog_0 -= 256;*/

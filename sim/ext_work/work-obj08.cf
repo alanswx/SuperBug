@@ -1,0 +1,6 @@
+v 4
+file "/Users/alans/Documents/development/SuperBug/sim/" "extname_test.vhd" "63221196c40c9094c5261fd9a8bf2e4e5d0efb97" "20260506183632.954":
+  entity inner at 1( 0) + 0 on 11;
+  architecture a of inner at 6( 71) + 0 on 12;
+  entity extname_test at 11( 170) + 0 on 13;
+  architecture behavior of extname_test at 19( 307) + 0 on 14;
