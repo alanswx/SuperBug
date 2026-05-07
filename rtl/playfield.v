@@ -321,10 +321,16 @@ module playfield(
     // dense trees while the other half was correct). The visible region
     // in our synchronizer is `~hblank_int`, which already encodes the
     // 320-pixel visible width of MAME's set_raw.
+    // MAME's superbug renderer applies `set_scrollx(scroll_x - 37)` — a
+    // 37-pixel constant shift that comes from where the real-PCB
+    // schematic positions the start of PHP relative to the visible
+    // scan. Our PHP_Load gets the raw byte from the CPU, which leaves
+    // us 37 pixels right of MAME at any given scroll_x. Subtract here
+    // so the rendered position matches MAME (and the AVI reference).
     always @(posedge Clk6)
     begin: PHP_count
         if (PHP_Load_n == 1'b0)
-            PHP <= BD;
+            PHP <= BD - 8'd37;
         else if (~HBlank)
             PHP <= PHP + 1;
     end
