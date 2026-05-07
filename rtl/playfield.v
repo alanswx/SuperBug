@@ -329,12 +329,23 @@ module playfield(
     
     //L9
     
-    always @(posedge Clk6)
-    begin: ArrowLatch
-        if (ArrowOff_n == 1'b0)
-            Arrow_n <= 1'b1;
-        else 
-            Arrow_n <= 1'b0;
+    // L9 — Arrow_n latch.
+    // Original VHDL:
+    //   if ArrowOff_n = '0' then Arrow_n <= '1';   -- async preset
+    //   elsif rising_edge(VBlank) then Arrow_n <= '0';
+    // i.e. the CPU's ArrowOff strobe ($01E0) sets Arrow_n=1 ("arrows
+    // off"), and the next VBlank rising edge clears it back to 0
+    // ("arrows on") at the start of the following frame. The X-HDL
+    // port collapsed this into a level mux that just drives
+    // Arrow_n = ~ArrowOff_n every Clk6 — that throws the CPU strobe
+    // away after one cycle, so arrows are always on. In MAME's
+    // attract sequence the program asserts ArrowOff almost every
+    // frame, so the arrow-overlay tiles should be hidden.
+    reg prev_VBlank_arrow;
+    always @(posedge Clk6) begin
+        prev_VBlank_arrow <= VBlank;
+        if (~ArrowOff_n)                            Arrow_n <= 1'b1;
+        else if (VBlank & ~prev_VBlank_arrow)       Arrow_n <= 1'b0;
     end
     
     //M9		
