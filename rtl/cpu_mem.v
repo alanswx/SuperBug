@@ -336,6 +336,18 @@ module cpu_mem(
                         1'b1;
     assign PHP_Load_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b001) ? 1'b0 :
                         1'b1;
+
+    // Debug-only: latch the most recent scroll_x / scroll_y the CPU
+    // wrote so the harness can compare directly with MAME's stored
+    // m_scroll_x/m_scroll_y at any frame. Hardware doesn't keep these —
+    // PHP_Load/PVP_Load are write strobes only — so this is purely an
+    // observation point and has no functional effect.
+    reg [7:0] scroll_x_dbg;
+    reg [7:0] scroll_y_dbg;
+    always @(posedge Clk6) begin
+        if (~PHP_Load_n) scroll_x_dbg <= CPU_Dout;
+        if (~PVP_Load_n) scroll_y_dbg <= CPU_Dout;
+    end
     assign CrashReset_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b010) ? 1'b0 : 
                           1'b1;
     assign SkidReset_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b011) ? 1'b0 : 
