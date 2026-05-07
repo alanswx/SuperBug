@@ -422,19 +422,31 @@ module playfield(
     
     assign Window_en = H256 & ((~(H128 & H64 & H32 & H16)));
     
-    // 9316 counter has CEP and CET tied low, used as a synchronous latch
-    
-    always @(posedge Clk6)
-    begin: H7
-        
-        begin
-            if (LoadPd == 1'b1)
-            begin
-                PCC2 <= PD[7];
-                PCC1 <= PD[6];
-                CrashCode <= PD[4];
-                SkidCode_n <= PD[3];
-            end
+    // 9316 counter (H7 on the schematic) used as a synchronous latch.
+    // P0..P3 = PD3, PD4, PD6, PD7. Q0..Q3 = SKID CODE, CRASH CODE, PCC1,
+    // PCC2. Load is gated by PE = ~LOAD_PD (LOAD_PD = PHP[0] & PHP[1]
+    // — fires once every 4 pixels, at PHP%4 == 3). Synchronous load on
+    // the next CP (=Clk6) edge, so PCC1/PCC2/CrashCode/SkidCode update
+    // 1 cycle after LoadPd asserts.
+    //
+    // CONSEQUENCE / known visible artifact: this means the first ~4
+    // pixels of each cell still display with the *previous* cell's
+    // PCC1/PCC2 color bits. At a transition between a populated cell
+    // ($98 = palette 2) and an "empty road" cell ($08 = palette 0),
+    // the first 4 pixels of the road cell render with the previous
+    // cell's color — visible as "ghost scenery" at cell edges along
+    // every scanline. This matches the real-PCB schematic exactly
+    // (the 9316 H7 chip latches synchronously on Clk6 with LOAD_PD
+    // gating PE). MAME's tilemap renderer doesn't model the lag and
+    // therefore shows sharper cell boundaries; our render is the
+    // hardware-faithful one. Don't "fix" by removing the LoadPd gate
+    // unless you've also flipped to MAME's per-pixel color path.
+    always @(posedge Clk6) begin: H7
+        if (LoadPd == 1'b1) begin
+            PCC2       <= PD[7];
+            PCC1       <= PD[6];
+            CrashCode  <= PD[4];
+            SkidCode_n <= PD[3];
         end
     end
     
