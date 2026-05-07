@@ -324,9 +324,17 @@ module cpu_mem(
     assign SkidSnd_n = (IO_Wr == 1'b1 & Adr[9] == 1'b1 & Adr[7:5] == 3'b110) ? 1'b0 : 
                        1'b1;
     
-    assign PHP_Load_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b000) ? 1'b0 : 
+    // Per MAME's superbug memory map (firetrk.cpp:998 — `scroll_y` at $0100,
+    // `scroll_x` at $0120) the CPU writes vertical scroll to $0100 and
+    // horizontal scroll to $0120. Our PVP is the V (per-scanline) counter
+    // and PHP is the H (per-pixel) counter, so $0100 must load PVP and
+    // $0120 must load PHP. The original mapping had them reversed, which
+    // sent scroll_y into the H counter — visible at boot as a missing
+    // left-half playfield (the H scroll was effectively scroll_y, putting
+    // the populated tilemap rows out of the visible window's H span).
+    assign PVP_Load_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b000) ? 1'b0 :
                         1'b1;
-    assign PVP_Load_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b001) ? 1'b0 : 
+    assign PHP_Load_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b001) ? 1'b0 :
                         1'b1;
     assign CrashReset_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b010) ? 1'b0 : 
                           1'b1;

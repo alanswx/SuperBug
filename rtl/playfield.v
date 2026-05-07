@@ -183,20 +183,29 @@ module playfield(
     
     //Playfield RAM
     
+    // E6/F6: original VHDL had E6 storing Din[7:4] but reading as PD[3:0]
+    // (and F6 the inverse), giving display PD = nibble_swap(written_byte).
+    // MAME's superbug_state::get_tile_info1 decodes the byte directly
+    // (`code = ram[i] & 0x3F`, `color = ram[i] >> 6`) — no swap. With the
+    // swap in place, byte $08 (MAME-invisible "tile 8 / palette 0") was
+    // appearing as PD=$80 (visible "tile 0 / palette 2") and filling the
+    // road area with tile-0 noise instead of staying black. Same schematic
+    // mislabel kind as the PD[5:4] mux fix in commit a6cc504. Wire each
+    // RAM half straight through so display PD = byte the CPU wrote.
     ram256 E6(
         .clock(Clk6),
         .address(PF_RAM_Adr),
         .wren(PF_Wren),
-        .data(PFRAM_Din[7:4]),
+        .data(PFRAM_Din[3:0]),
         .q(PD[3:0])
     );
-    
-    
+
+
     ram256 F6(
         .clock(Clk6),
         .address(PF_RAM_Adr),
         .wren(PF_Wren),
-        .data(PFRAM_Din[3:0]),
+        .data(PFRAM_Din[7:4]),
         .q(PD[7:4])
     );
     
