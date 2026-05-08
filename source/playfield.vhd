@@ -251,8 +251,9 @@ PfCarVid <= (Pfld and CarVideo);
 Skid_n <= (PfCarVid nand (CrashCode nor SkidCode_n));
 
 -- 74191 counters at C5 and E8. Latch simulated CPU writes and apply the
--- frame-level scroll value at the end of VBlank; MAME subtracts 37 pixels
--- from scroll_x before rendering.
+-- frame-level scroll value at the end of VBlank. Bias PHP to the rotated
+-- output origin so partially-written playfield rows enter from the top
+-- like the MAME reference capture.
 PHP_count: process(Clk6)
 begin
 	if rising_edge(Clk6) then
@@ -262,7 +263,7 @@ begin
 		end if;
 
 		if prev_VBlank_php = '1' and VBlank = '0' then
-			PHP <= PHP_load_value - "00100101";
+			PHP <= PHP_load_value + "00010000";
 		elsif H256 = '1' and VBlank = '0' then
 			PHP <= PHP + 1;
 		end if;
