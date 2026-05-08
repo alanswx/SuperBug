@@ -102,6 +102,7 @@ signal Arrow_n			: std_logic;
 
 signal VidShift 		: std_logic_vector(3 downto 0);
 signal LoadPd			: std_logic;
+signal LoadPd_d			: std_logic := '0';
 
 signal PfWndo_n		: std_logic;
 signal Window_en		: std_logic;
@@ -312,12 +313,14 @@ CrashArrow <= (Arrow_n nand CrashSkid);
 --N9
 Pfld <= CrashArrow and PF;
 
--- 74LS95 shift register uses falling edge of Clk6_n, using rising edge of Clk6 
--- accomplishes the same thing
-A5: process(Clk6, LoadPd)
-begin	
+-- 74LS95 shift register uses falling edge of Clk6_n, using rising edge of Clk6
+-- accomplishes the same thing. The FPGA ROM output is registered, so delay
+-- LOAD_PD one Clk6 edge before reloading the shift register.
+A5: process(Clk6)
+begin
 	if rising_edge(Clk6) then
-		if LoadPd = '1' then
+		LoadPd_d <= LoadPd;
+		if LoadPd_d = '1' then
 			VidShift <= Vid;
 		else
 			VidShift <= '0' & VidShift(3 downto 1);
@@ -344,7 +347,8 @@ begin
 	end if;
 end process;
 
-Window_en <= H256 and (not (H128 and H64 and H32 and H16));
+-- Match MAME's tighter trailing playfield clip after cabinet rotation.
+Window_en <= H256 and (not (H128 and H64 and H32 and (H16 or H8)));
 	
 
 -- Avoid the four-pixel color/code lag from the hardware latch in this

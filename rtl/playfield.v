@@ -362,12 +362,17 @@ module playfield(
     //N9
     assign Pfld = CrashArrow & Pf;
     
-    // 74LS95 shift register uses falling edge of Clk6_n, using rising edge of Clk6 
-    // accomplishes the same thing
+    // 74LS95 shift register uses falling edge of Clk6_n, using rising edge of Clk6
+    // accomplishes the same thing. The FPGA/Verilator ROM models have a
+    // registered output, so delay LOAD_PD one Clk6 edge before reloading
+    // the shift register. Otherwise the boundary cycle can load the previous
+    // ROM nibble and leave stray pixels at scrolling tile edges.
     
+    reg LoadPd_d;
     always @(posedge Clk6)
     begin: A5
-        if (LoadPd == 1'b1)
+        LoadPd_d <= LoadPd;
+        if (LoadPd_d == 1'b1)
             VidShift <= Vid;
         else
             VidShift <= {1'b0, VidShift[3:1]};
@@ -403,7 +408,11 @@ module playfield(
         end
     end
     
-    assign Window_en = H256 & ((~(H128 & H64 & H32 & H16)));
+    // MAME clips the unrotated playfield to x=0x02a..0x115. In the
+    // rotated Verilator image, the old trailing edge allowed one extra
+    // 8-pixel slice to wrap into the top of the screen. Tighten that
+    // edge by also blanking when H8 is high in the final H32 group.
+    assign Window_en = H256 & ((~(H128 & H64 & H32 & (H16 | H8))));
     
     // 9316 H7 on the schematic latches PCC1/PCC2/CrashCode/SkidCode
     // synchronously on Clk6 when PE = ~LOAD_PD goes low (LOAD_PD =
