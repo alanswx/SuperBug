@@ -44,13 +44,23 @@ Release
 
 # Build / sim artifacts
 .DS_Store
+*.o
+*.a
+*.d
+*.cf
+e~*.o
 verilator/obj_dir/
 verilator/screenshot_frame_*.png
 verilator/imgui.ini
+sim/altera_mf/
 sim/work/
 sim/trace_work/
 sim/ext_work/
 sim/sb_trace_tb
+sim/top
 sim/extname_test
 sim/e~*
+sim/ghdl_access_c.o
+sim/verify_altera_mf/
+sim/verify_trace_work/
 verilator/superbug.zip

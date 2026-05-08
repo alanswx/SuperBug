@@ -106,6 +106,13 @@ signal LoadPd			: std_logic;
 signal PfWndo_n		: std_logic;
 signal Window_en		: std_logic;
 signal Pf				: std_logic;
+signal PHP_load_value	: std_logic_vector(7 downto 0) := (others => '0');
+signal PVP_load_value	: std_logic_vector(7 downto 0) := (others => '0');
+signal prev_VBlank_php	: std_logic := '0';
+signal prev_VBlank_pvp	: std_logic := '0';
+signal prev_HSync_pvp	: std_logic := '0';
+signal prev_VBlank_arrow: std_logic := '0';
+signal prev_H8_pfwndo	: std_logic := '0';
 
 
 begin
@@ -187,7 +194,7 @@ port map(
 	clock => Clk6,
 	address => PF_RAM_Adr,
 	wren => PF_Wren,
-	data => PFRAM_Din(7 downto 4),
+	data => PFRAM_Din(3 downto 0),
 	q => PD(3 downto 0)
 	);
 
@@ -198,18 +205,20 @@ port map(
 	clock => Clk6,
 	address => PF_RAM_Adr,
 	wren => PF_Wren,
-	data => PFRAM_Din(3 downto 0),
+	data => PFRAM_Din(7 downto 4),
 	q => PD(7 downto 4)
 	);
 	
--- Wren is active-low on real hardware so this is a NAND gate	
-PF_Wren <= (VBlank and RnW and Sys_En);
+-- Allow writes whenever the CPU is in the playfield RAM range. The
+-- simulated CPU is too slow for every playfield write to land in VBlank.
 PfldRAM <= (Sys_En and BA(10) and BA(8));
+PF_Wren <= (RnW and Sys_En and PfldRAM);
 PF_RAMce_n <= ((not VBlank) nor PfldRAM);
 	
-BD_en <= not(VBlank and PfldRAM and RnW);	
+BD_en <= not(PfldRAM and RnW);	
 
-PF_RAM_Adr <= PVP(7 downto 4) & PHP(7 downto 4) when VBlank = '0' else BA(7 downto 0);
+PF_RAM_Adr <= BA(7 downto 0) when PfldRAM = '1' else
+              PVP(7 downto 4) & PHP(7 downto 4);
 
 -- Check data bus paths carefully
 PFRAM_Din <= BD when BD_en = '0' else (others => '1'); 
@@ -241,25 +250,39 @@ Crash_n <= (CrashCode nand PfCarVid);
 PfCarVid <= (Pfld and CarVideo);
 Skid_n <= (PfCarVid nand (CrashCode nor SkidCode_n));
 
--- 74191 counters at C5 and E8
-PHP_count: process(Clk6, BD, VBlank, H256, PHP_Load_n)
+-- 74191 counters at C5 and E8. Latch simulated CPU writes and apply the
+-- frame-level scroll value at the end of VBlank; MAME subtracts 37 pixels
+-- from scroll_x before rendering.
+PHP_count: process(Clk6)
 begin
-	if PHP_Load_n = '0' then
-		PHP <= BD;
-	elsif rising_edge(Clk6) then
-		if ((not H256) nand VBlank) = '0' then
+	if rising_edge(Clk6) then
+		prev_VBlank_php <= VBlank;
+		if PHP_Load_n = '0' then
+			PHP_load_value <= BD;
+		end if;
+
+		if prev_VBlank_php = '1' and VBlank = '0' then
+			PHP <= PHP_load_value - "00100101";
+		elsif H256 = '1' and VBlank = '0' then
 			PHP <= PHP + 1;
 		end if;
 	end if;
 end process;
 
--- 74191 counters at D5 and F8
-PVP_count: process(HSync, BD, VBlank, H256, PVP_Load_n)
+-- 74191 counters at D5 and F8. Model the HSync edge on Clk6 so this
+-- module stays in one simulation clock domain.
+PVP_count: process(Clk6)
 begin
-	if PVP_Load_n = '0' then
-		PVP <= BD;
-	elsif rising_edge(HSync) then
-		if VBlank = '0' then
+	if rising_edge(Clk6) then
+		prev_HSync_pvp <= HSync;
+		prev_VBlank_pvp <= VBlank;
+		if PVP_Load_n = '0' then
+			PVP_load_value <= BD;
+		end if;
+
+		if prev_VBlank_pvp = '1' and VBlank = '0' then
+			PVP <= PVP_load_value;
+		elsif HSync = '1' and prev_HSync_pvp = '0' and VBlank = '0' then
 			PVP <= PVP + 1;
 		end if;
 	end if;
@@ -269,12 +292,15 @@ end process;
 CrashSkid <= ((not CrashCode) and SkidCode_n);
 
 --L9
-ArrowLatch: process(VBlank, ArrowOff_n)
+ArrowLatch: process(Clk6)
 begin
-	if ArrowOff_n = '0' then
-		Arrow_n <= '1';
-	elsif rising_edge(VBlank) then 
-		Arrow_n <= '0';
+	if rising_edge(Clk6) then
+		prev_VBlank_arrow <= VBlank;
+		if ArrowOff_n = '0' then
+			Arrow_n <= '1';
+		elsif VBlank = '1' and prev_VBlank_arrow = '0' then
+			Arrow_n <= '0';
+		end if;
 	end if;
 end process;
 
@@ -301,33 +327,31 @@ Pf <= (VidShift(0) nor PfWndo_n);
 LoadPd <= (PHP(0) and PHP(1));
 
 --L9
--- Real hardware uses VBlank_n, no need to create a separate inverted signal
-WindowLatch: process(H8, VBlank, Window_en)
+-- Real hardware clocks this on H8 with VBlank as an async clear. Model the
+-- H8 edge on Clk6 to avoid simulator multi-edge scheduling races.
+WindowLatch: process(Clk6)
 begin
-	if VBlank = '1' then
-		PfWndo <= '0';
-		PfWndo_n <= '1';
-	elsif rising_edge(H8) then
-		PfWndo <= Window_en;
-		PFWndo_n <= (not Window_en);
+	if rising_edge(Clk6) then
+		prev_H8_pfwndo <= H8;
+		if VBlank = '1' then
+			PfWndo <= '0';
+			PfWndo_n <= '1';
+		elsif H8 = '1' and prev_H8_pfwndo = '0' then
+			PfWndo <= Window_en;
+			PFWndo_n <= (not Window_en);
+		end if;
 	end if;
 end process;
 
 Window_en <= H256 and (not (H128 and H64 and H32 and H16));
 	
 
--- 9316 counter has CEP and CET tied low, used as a synchronous latch
-H7: process(Clk6, LoadPd, PD)
-begin
-	if rising_edge(Clk6) then
-		if LoadPd = '1' then
-			PCC2 <= PD(7);
-			PCC1 <= PD(6);
-			CrashCode <= PD(4);
-			SkidCode_n <= PD(3);
-		end if;
-	end if;
-end process;
+-- Avoid the four-pixel color/code lag from the hardware latch in this
+-- tilemap-style renderer by driving these from the current RAM byte.
+PCC2 <= PD(7);
+PCC1 <= PD(6);
+CrashCode <= PD(4);
+SkidCode_n <= PD(3);
 		
 		
 

@@ -104,7 +104,10 @@ H256_n <= (not HCount(8));
 --BA10and8 <= (BA(10) and BA(8));
 BA10and8 <= BA(10) and not BA(8);
 BA12nor11 <= BA(12) nor BA(11);
-Sys_en <= (BVMA and BA12nor11 and Phi2);
+-- Keep the system address window visible for the full CPU access cycle.
+-- The Phi2-gated form races the CPU data sampling in simulation, and this
+-- signal is also used downstream for playfield RAM decode.
+Sys_en <= (BVMA and BA12nor11);
 BVMA <= VMA; --((not BA(14)) and VMA);
 
 

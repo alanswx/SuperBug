@@ -97,6 +97,9 @@ signal BD3_Sel				: std_logic;
 signal BD4_Sel				: std_logic;
 
 signal R_Sel				: std_logic_vector(1 downto 0);
+signal prev_H16			: std_logic := '0';
+signal prev_V8				: std_logic := '0';
+signal prev_CarRot_n		: std_logic := '0';
 
 begin
 
@@ -161,37 +164,34 @@ begin
 end process;
 
 
---M7a: process(HCount)
-M7a: process(H16)
+-- M7a/M7b sprite-window latches and L4 car-rotation register are
+-- re-clocked on Clk6 with explicit edge detection, matching the Verilog
+-- simulation fix for multi-edge scheduling races.
+M7_L4: process(Clk6)
 begin
-	if rising_edge(H16) then 
-		-- Real hardware uses nand then Q_, same result 
-		M7Qa <= H256 and H128n and H64 and H32; 
-	end if;
-end process;
+	if rising_edge(Clk6) then
+		prev_H16 <= H16;
+		prev_V8 <= V8;
+		prev_CarRot_n <= CarRot_n;
 
---M7b: process(VCount)
-M7b: process(V8)
-begin
-	if rising_edge(V8) then -- Clocked by 8H
-		-- Real hardware uses nand then Q_, same result 
-		M7Qb <= V128n and V64 and V32; 
+		if H16 = '1' and prev_H16 = '0' then
+			-- Real hardware uses nand then Q_, same result
+			M7Qa <= H256 and H128n and H64 and H32;
+		end if;
+		if V8 = '1' and prev_V8 = '0' then
+			-- Real hardware uses nand then Q_, same result
+			M7Qb <= V128n and V64 and V32;
+		end if;
+		if CarRot_n = '1' and prev_CarRot_n = '0' then
+			R0 <= BD(0);
+			R1 <= BD(1);
+			BD2_Sel <= BD(2);
+			BD3_Sel <= BD(3);
+			BD4_Sel <= BD(4);
+		end if;
 	end if;
 end process;
 CarEna_n <= M7Qa nand M7Qb;
-
--- Latch at L4
-L4: process(CarRot_n)
-begin
-	if rising_edge(CarRot_n) then
-		R0 <= BD(0);
-		R1 <= BD(1);
-		BD2_Sel <= BD(2);
-		BD3_Sel <= BD(3);
-		BD4_Sel <= BD(4);
-	end if;
-end process;
-	
 
 -- Selectors at K5, L6 and J6
 -- These swap H and V signals to flip the car image stored in ROM

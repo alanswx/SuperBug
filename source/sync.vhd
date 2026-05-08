@@ -69,6 +69,13 @@ signal hsync_int		: std_logic := '0';
 signal hsync_reset 	: std_logic := '0';
 
 signal prom_address : std_logic_vector(7 downto 0);
+signal prev_H32			: std_logic := '0';
+signal prev_H8			: std_logic := '0';
+signal prev_hsync_int	: std_logic := '0';
+signal ce_H32_rise		: std_logic;
+signal ce_H8_rise		: std_logic;
+signal ce_hsync_rise	: std_logic;
+signal ce_line			: std_logic;
 
 begin
 
@@ -85,14 +92,32 @@ begin
 	end if;
 end process;
 
--- Vertical counter is 8 bits, clocked by the rising edge of H256 at the end of each horizontal line
-V_count: process(hsync_int)
+-- Edge detectors keep the simulator in a single clk_12 domain instead of
+-- relying on multi-edge sensitivity to internally generated clocks.
+edge_detect: process(clk_12)
 begin
-	if rising_edge(Hsync_int) then
+	if rising_edge(clk_12) then
+		prev_H32 <= H32;
+		prev_H8 <= H8;
+		prev_hsync_int <= hsync_int;
+	end if;
+end process;
+ce_H32_rise <= H32 and (not prev_H32);
+ce_H8_rise <= H8 and (not prev_H8);
+ce_hsync_rise <= hsync_int and (not prev_hsync_int);
+
+-- Advance the vertical counter once per scanline during the HBlank window,
+-- matching the Verilog timing fix that prevents vcount/NMI races.
+ce_line <= '1' when h_counter = "0101010000" else '0'; -- 336
+V_count: process(clk_12)
+begin
+	if rising_edge(clk_12) then
 		if vreset_n = '0' then
 			v_counter <= (others => '0');
-		else
+		elsif ce_line = '1' then
 			v_counter <= v_counter + '1';
+		else
+			v_counter <= v_counter;
 		end if;
 	end if;
 end process;
@@ -114,10 +139,12 @@ port map(
 		);
 
 -- Register fed by the sync PROM, in the original hardware this also creates the complements of these signals
-sync_register: process(hsync_int)
+sync_register: process(clk_12)
 begin
-	if rising_edge(hsync_int) then
-		sync_reg <= sync_bus;
+	if rising_edge(clk_12) then
+		if ce_hsync_rise = '1' then
+			sync_reg <= sync_bus;
+		end if;
 	end if;
 end process;
 
@@ -143,24 +170,25 @@ vblank   <= '1' when v_counter >= "11110000" else '0';                   -- vcou
 vsync    <= '1' when v_counter >= "11110010" and v_counter <= "11110100" -- 242..244
             else '0';
 
--- A pair of D type flip-flops that generate the Hsync signal
-Hsync_1: process(H256_n, H32)
+-- A pair of D type flip-flops that generate the Hsync signal. Model the
+-- H32/H8 clocks as enables on clk_12 to avoid simulator extra edges.
+Hsync_1: process(clk_12)
 begin	
-	if H256_n = '0' then	
-		hblank_int <= '0';
-	else
-		if rising_edge(H32) then
+	if rising_edge(clk_12) then
+		if H256_n = '0' then
+			hblank_int <= '0';
+		elsif ce_H32_rise = '1' then
 			hblank_int <= not H64;
 		end if;
 	end if;
 end process;
 
-Hsync_2: process(hblank_int, H8) 
+Hsync_2: process(clk_12) 
 begin
-	if hblank_int = '0' then
-		hsync_int <= '0';
-	else
-		if rising_edge(H8) then
+	if rising_edge(clk_12) then
+		if hblank_int = '0' then
+			hsync_int <= '0';
+		elsif ce_H8_rise = '1' then
 			hsync_int <= H32;
 		end if;
 	end if;

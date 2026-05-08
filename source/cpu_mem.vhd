@@ -96,6 +96,9 @@ signal Out2_n			: std_logic;
 
 signal nmi:std_logic;
 signal irq:std_logic;
+signal prev_V16			: std_logic := '0';
+signal ce_V16_fall		: std_logic;
+signal SysEn_rd			: std_logic;
 begin
 
 Reset <= (not Reset_n);
@@ -120,16 +123,28 @@ Legit <= (H2 nor Phi1);
 
 
 -- IRQ
-IRQ_DFF: process(V16, HBlank)
+IRQ_edge: process(Clk6)
 begin
-	if HBlank = '0' then
-		IRQ_n <= '1';
-	elsif falling_edge(V16) then -- Real hardware uses rising edge of inverted 16V
-		IRQ_n <= '0';
+	if rising_edge(Clk6) then
+		prev_V16 <= V16;
+	end if;
+end process;
+ce_V16_fall <= (not V16) and prev_V16;
+
+IRQ_DFF: process(Clk6)
+begin
+	if rising_edge(Clk6) then
+		if HBlank = '0' then
+			IRQ_n <= '1';
+		elsif ce_V16_fall = '1' then -- Real hardware uses rising edge of inverted 16V
+			IRQ_n <= '0';
+		end if;
 	end if;
 end process;
 
-NMI_n <= (not VBlank);
+-- VBlank stays high for the retrace window; use only its first scanline
+-- for NMI so a slow simulated handler cannot see nested NMIs.
+NMI_n <= '0' when VBlank = '1' and VCount(3 downto 0) = "0000" else '1';
 
 -- Watchdog
 
@@ -285,8 +300,9 @@ MotorSnd_n <= '0' when IO_Wr = '1' and Adr(9) = '1' and Adr(7 downto 5) = "100" 
 CrashSnd_n <= '0' when IO_Wr = '1' and Adr(9) = '1' and Adr(7 downto 5) = "101" else '1';	
 SkidSnd_n  <= '0' when IO_Wr = '1' and Adr(9) = '1' and Adr(7 downto 5) = "110" else '1';
 
-PHP_Load_n 		<= '0' when IO_Wr = '1' and Adr(10) = '0' and Adr(8) = '1' and Adr(7 downto 5) = "000" else '1';
-PVP_Load_n		<= '0' when IO_Wr = '1' and Adr(10) = '0' and Adr(8) = '1' and Adr(7 downto 5) = "001" else '1';
+-- MAME map: $0100 is scroll_y/PVP, $0120 is scroll_x/PHP.
+PVP_Load_n 		<= '0' when IO_Wr = '1' and Adr(10) = '0' and Adr(8) = '1' and Adr(7 downto 5) = "000" else '1';
+PHP_Load_n		<= '0' when IO_Wr = '1' and Adr(10) = '0' and Adr(8) = '1' and Adr(7 downto 5) = "001" else '1';
 CrashReset_n	<= '0' when IO_Wr = '1' and Adr(10) = '0' and Adr(8) = '1' and Adr(7 downto 5) = "010" else '1';
 SkidReset_n		<= '0' when IO_Wr = '1' and Adr(10) = '0' and Adr(8) = '1' and Adr(7 downto 5) = "011" else '1';
 CarRot_n			<= '0' when IO_Wr = '1' and Adr(10) = '0' and Adr(8) = '1' and Adr(7 downto 5) = "100" else '1';
@@ -294,8 +310,11 @@ SteerReset_n	<= '0' when IO_Wr = '1' and Adr(10) = '0' and Adr(8) = '1' and Adr(
 WDogReset_n		<= '0' when IO_Wr = '1' and Adr(10) = '0' and Adr(8) = '1' and Adr(7 downto 5) = "110" else '1';
 ArrowOff_n		<= '0' when IO_Wr = '1' and Adr(10) = '0' and Adr(8) = '1' and Adr(7 downto 5) = "111" else '1';
 
-In1_n 	<= '0' when SysEn = '1' and Adr(9) = '1' and Adr(7 downto 5) = "000" else '1';
-Opt_n 	<= '0' when SysEn = '1' and Adr(9) = '1' and Adr(7 downto 5) = "010" else '1';
+-- Writes keep the Phi2-gated SysEn. Reads must decode across the full
+-- CPU access cycle so CPU_Din is still selected when cpu68 samples it.
+SysEn_rd <= BVMA and BA12nor11;
+In1_n 	<= '0' when SysEn_rd = '1' and Adr(9) = '1' and Adr(7 downto 5) = "000" else '1';
+Opt_n 	<= '0' when SysEn_rd = '1' and Adr(9) = '1' and Adr(7 downto 5) = "010" else '1';
 Out2_n 	<= '0' when SysEn = '1' and Adr(9) = '1' and Adr(7 downto 5) = "011" else '1';
 -- ASR (where does this go?)	-- Audio related
 
