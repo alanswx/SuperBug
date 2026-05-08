@@ -30,6 +30,8 @@ public:
 	int count_pixel;
 	int count_line;
 	int count_frame;
+	int completed_frame;
+	bool frame_complete;
 
 	float stats_fps;
 	float stats_frameTime;

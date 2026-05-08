@@ -293,8 +293,9 @@ module playfield(
     //
     // The simulated CPU currently writes the scroll registers later than
     // real hardware would inside VBlank, so latch the CPU's write and
-    // apply it on the VBlank falling edge. MAME renders with frame-level
-    // scroll registers (`scroll_x - 37`, `scroll_y`), which this matches.
+    // apply it on the VBlank falling edge. Bias PHP to the rotated/cropped
+    // output origin so partially-written playfield rows enter from the top
+    // like the MAME reference capture.
     reg [7:0] PHP_load_value;
     reg       prev_VBlank_php;
     always @(posedge Clk6)
@@ -304,7 +305,7 @@ module playfield(
             PHP_load_value <= BD;
 
         if (prev_VBlank_php & ~VBlank)
-            PHP <= PHP_load_value - 8'd37;
+            PHP <= PHP_load_value + 8'd16;
         else if (H256 & ~VBlank)
             PHP <= PHP + 1;
     end

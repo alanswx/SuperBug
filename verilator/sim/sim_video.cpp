@@ -7,6 +7,7 @@
 #include "imgui_impl_sdl.h"
 #include "imgui_impl_opengl2.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <SDL.h>
 #include <SDL_opengl.h>
 #include <sys/time.h>
@@ -188,6 +189,8 @@ SimVideo::SimVideo(int width, int height, int rotate)
 	count_pixel = 0;
 	count_line = 0;
 	count_frame = 0;
+	completed_frame = 0;
+	frame_complete = false;
 	last_hblank = 0;
 	last_vblank = 0;
 
@@ -208,7 +211,7 @@ SimVideo::~SimVideo()
 int SimVideo::Initialise(const char* windowTitle) {
 
 	// Setup pointers for video texture
-	output_ptr = (uint32_t*)malloc(output_size);
+	output_ptr = (uint32_t*)calloc(output_width * output_height, sizeof(uint32_t));
 
 #ifdef WIN32
 	// Create application window
@@ -412,6 +415,12 @@ void SimVideo::Clock(bool hblank, bool vblank, bool hsync, bool vsync, uint32_t 
 	bool vb_falling = (!vblank && last_vblank);
 	bool vb_rising = (vblank && !last_vblank);
 
+	if (vb_rising) {
+		completed_frame++;
+		frame_complete = true;
+		frame_ready = 1;
+	}
+
 	if (!vblank) {
 		// Next line on end of hblank
 		if (hb_falling) {
@@ -452,7 +461,7 @@ void SimVideo::Clock(bool hblank, bool vblank, bool hsync, bool vsync, uint32_t 
 
 		if (output_rotate == -1) {
 			// Rotate output by 90 degrees clockwise
-			y = output_height - ox;
+			y = output_height - 1 - ox;
 			xs = output_width;
 			x = oy;
 		}
@@ -460,11 +469,11 @@ void SimVideo::Clock(bool hblank, bool vblank, bool hsync, bool vsync, uint32_t 
 			// Rotate output by 90 degrees clockwise
 			y = ox;
 			xs = output_width;
-			x = output_width - oy;
+			x = output_width - 1 - oy;
 		}
 
 		if (output_vflip) {
-			y = output_height - y;
+			y = output_height - 1 - y;
 		}
 
 		// Clamp values to stop access violations on texture

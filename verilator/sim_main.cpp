@@ -306,18 +306,18 @@ int verilate() {
 			uint32_t colour = 0xFF000000 | top->VGA_B << 16 | top->VGA_G << 8 | top->VGA_R;
 			static int prev_frame = 0;
 			video.Clock(top->VGA_HB, top->VGA_VB, top->VGA_HS, top->VGA_VS, colour);
-			if (video.count_frame != prev_frame) {
+			if (video.frame_complete && video.completed_frame != prev_frame) {
 				fprintf(stderr, "[frame] %d (t=%llu)\n",
-				        video.count_frame, (unsigned long long)main_time);
-				prev_frame = video.count_frame;
+				        video.completed_frame, (unsigned long long)main_time);
+				prev_frame = video.completed_frame;
 				if (screenshot_mode) {
-					auto it = std::find(screenshot_frames.begin(), screenshot_frames.end(), video.count_frame);
+					auto it = std::find(screenshot_frames.begin(), screenshot_frames.end(), video.completed_frame);
 					if (it != screenshot_frames.end()) {
-						save_screenshot(video.count_frame);
+						save_screenshot(video.completed_frame);
 						screenshot_frames.erase(it);
 					}
 				}
-				if (dump_ram_at_frame >= 0 && video.count_frame == dump_ram_at_frame) {
+				if (dump_ram_at_frame >= 0 && video.completed_frame == dump_ram_at_frame) {
 					auto* root = top->rootp;
 					fprintf(stderr,
 					        "stats_xMax=%d stats_yMax=%d (visible region per scanline x lines per frame)\n",
@@ -349,10 +349,11 @@ int verilate() {
 					}
 					dump_ram_at_frame = -1;  // once
 				}
-				if (stop_at_frame >= 0 && video.count_frame >= stop_at_frame) {
+				if (stop_at_frame >= 0 && video.completed_frame >= stop_at_frame) {
 					fprintf(stderr, "stop-at-frame %d reached, exiting\n", stop_at_frame);
 					exit(0);
 				}
+				video.frame_complete = false;
 			}
 		}
 

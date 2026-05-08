@@ -71,6 +71,12 @@ module ram256 (
     output reg [3:0]  q
 );
     reg [3:0] mem [0:255];
+    integer init_idx;
+    initial begin
+        q = 4'h0;
+        for (init_idx = 0; init_idx < 256; init_idx = init_idx + 1)
+            mem[init_idx] = 4'h0;
+    end
     always @(posedge clock) begin
         if (wren) mem[address] <= data;
         q <= mem[address];
@@ -85,6 +91,12 @@ module ram128 (
     output reg [7:0]  q
 );
     reg [7:0] mem [0:127];
+    integer init_idx;
+    initial begin
+        q = 8'h00;
+        for (init_idx = 0; init_idx < 128; init_idx = init_idx + 1)
+            mem[init_idx] = 8'h00;
+    end
     always @(posedge clock) begin
         if (wren) mem[address] <= data;
         q <= mem[address];
