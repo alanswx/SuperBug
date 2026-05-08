@@ -166,3 +166,9 @@ artifacts.
 See [`STATUS.md`](STATUS.md) for the current punch list and ongoing
 investigations (in particular, the playfield rendering fidelity work
 that's been the focus of recent debug sessions).
+
+
+## Source Code for Games
+
+- https://github.com/historicalsource/fire-truck
+- https://github.com/historicalsource/superbug
