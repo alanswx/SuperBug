@@ -63,7 +63,11 @@ module superbug(
     dbg_hcount,
     dbg_pfwndo,
     dbg_carena,
-    dbg_car_rot
+    dbg_car_rot,
+    dbg_sound,
+    dbg_snd_strobes,
+    dbg_inputs,
+    dbg_in_count
 );
     output [15:0] dbg_pc;
     output [7:0]  dbg_opcode;
@@ -77,12 +81,17 @@ module superbug(
     output        dbg_pfwndo;   // playfield window enable
     output        dbg_carena;   // car sprite window enable
     output [4:0]  dbg_car_rot;  // latched car rotation register
+    output [9:0]  dbg_sound;    // {asr_en, skid_en, crash_level, speed_data}
+    output [31:0] dbg_snd_strobes;
+    output [15:0] dbg_inputs;
+    output [15:0] dbg_in_count;
     input        Clk_50_I;		// 50MHz input clock
     input        Reset_n;		// Reset button (Active low)
     output       Video1_O;		// Video output 1 (1k Ohm)
     output       Video2_O;		// Video output 2 (680 Ohm)
     output       Sync_O;		// Composite sync output (1.2k)
-    output       Audio_O;		// Ideally this should have a simple low pass filter
+    output [15:0] Audio_O;	// Unsigned PCM; the MiSTer framework does its own
+                          	// sigma-delta, so no 1-bit encoder here
     input        Coin1_I;		// Coin switches (Active low)
     input        Coin2_I;
     input        Start_I;		// Start button
@@ -162,6 +171,7 @@ module superbug(
     wire         MotorSnd_n;
     wire         CrashSnd_n;
     wire         SkidSnd_n;
+    wire         ASR_n;
     
     //signal DIP_Sw			: std_logic_vector(7 downto 0);
     
@@ -212,6 +222,7 @@ module superbug(
         .MotorSnd_n(MotorSnd_n),
         .CrashSnd_n(CrashSnd_n),
         .SkidSnd_n(SkidSnd_n),
+        .ASR_n(ASR_n),
         .Adr(CPU_Adr),
         .DBus_in(CPU_Din),
         .DBus_out(CPU_Dout),
@@ -328,7 +339,21 @@ module superbug(
         .DBus(CPU_Din)
     );
     
-    //Sound: entity work.sound
+    sound Sound(
+        .Clk6(Clk6),
+        .Reset_n(Reset_n),
+        .VCount(VCount),
+        .BD(CPU_Dout),
+        .MotorSnd_n(MotorSnd_n),
+        .CrashSnd_n(CrashSnd_n),
+        .SkidSnd_n(SkidSnd_n),
+        .SkidReset_n(SkidReset_n),
+        .ASR_n(ASR_n),
+        .Attract(Attract),
+        .Audio_O(Audio_O),
+        .dbg_state(dbg_sound),
+        .dbg_strobes(dbg_snd_strobes)
+    );
     
     assign HBlank_n = ((~HBlank));
     assign VBlank_n = ((~VBlank));
@@ -339,6 +364,24 @@ module superbug(
     assign vs_O = VSync;
     assign clk_6_O = Clk6;
     
+    // Remember what the input port answered at each of its eight offsets, so
+    // the whole port can be compared against MAME in one line. Done here
+    // rather than inside the Input module: adding a clocked block in there
+    // disturbed how the simulator scheduled its combinational muxes.
+    reg [7:0]  dbg_in_bit7, dbg_in_bit0;
+    reg [15:0] dbg_in_reads;
+    always @(posedge Clk6) begin
+        if (In1_n == 1'b0) begin
+            // Sticky: record whether each offset has ever answered 1, so an
+            // offset the program only polls occasionally still shows up.
+            if (CPU_Din[7]) dbg_in_bit7[CPU_Adr[2:0]] <= 1'b1;
+            if (CPU_Din[0]) dbg_in_bit0[CPU_Adr[2:0]] <= 1'b1;
+            dbg_in_reads <= dbg_in_reads + 16'd1;
+        end
+    end
+    assign dbg_inputs = {dbg_in_bit7, dbg_in_bit0};
+    assign dbg_in_count = dbg_in_reads;
+
     assign dbg_hcount = HCount;
     assign dbg_pfwndo = PFWndo;
     

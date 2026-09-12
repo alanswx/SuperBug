@@ -36,6 +36,7 @@
 #include <sys/stat.h>
 #include <string>
 #include <iomanip>
+#include <set>
 #include <vector>
 #include <algorithm>
 #include <cstring>
@@ -124,6 +125,48 @@ vluint64_t soft_reset_time=0;
 //#define DISABLE_AUDIO
 #ifndef DISABLE_AUDIO
 SimAudio audio(clk_sys_freq, false);
+
+// --audio-wav <path>: decimate AUDIO_L to 44.1 kHz and write a real WAV on
+// exit. The existing file writer emits raw floats under a .wav name, which no
+// tool will open, and without a capture path the sound channels can only be
+// judged by ear.
+std::string audio_wav_path;
+
+// --switch-pc-trace: collect the distinct (switch address, program counter)
+// pairs the CPU uses to read the coin, start and gear switches, so the code
+// path can be compared against the same trace taken from MAME.
+bool switch_pc_trace = false;
+// --code-trace LO HI: record which ROM addresses the CPU fetches inside a
+// range, so the executed code can be set-compared against the same range
+// captured from MAME.
+int code_trace_lo = -1, code_trace_hi = -1;
+static std::set<uint32_t> code_seen;
+static std::set<uint32_t> switch_pc_seen;
+static std::vector<int16_t> audio_samples;
+static int audio_decimate = 0;
+
+static void write_wav(const std::string& path, const std::vector<int16_t>& pcm, int rate) {
+	FILE* f = fopen(path.c_str(), "wb");
+	if (!f) { fprintf(stderr, "audio: cannot write %s\n", path.c_str()); return; }
+	uint32_t data_bytes = (uint32_t)(pcm.size() * 2);
+	uint32_t riff = 36 + data_bytes;
+	uint32_t byte_rate = (uint32_t)rate * 2;
+	uint16_t u16;
+	uint32_t u32;
+	fwrite("RIFF", 1, 4, f); fwrite(&riff, 4, 1, f); fwrite("WAVE", 1, 4, f);
+	fwrite("fmt ", 1, 4, f); u32 = 16;  fwrite(&u32, 4, 1, f);
+	u16 = 1; fwrite(&u16, 2, 1, f);          // PCM
+	u16 = 1; fwrite(&u16, 2, 1, f);          // mono
+	u32 = (uint32_t)rate; fwrite(&u32, 4, 1, f);
+	fwrite(&byte_rate, 4, 1, f);
+	u16 = 2;  fwrite(&u16, 2, 1, f);         // block align
+	u16 = 16; fwrite(&u16, 2, 1, f);         // bits per sample
+	fwrite("data", 1, 4, f); fwrite(&data_bytes, 4, 1, f);
+	fwrite(pcm.data(), 2, pcm.size(), f);
+	fclose(f);
+	fprintf(stderr, "audio: wrote %s, %zu samples at %d Hz\n",
+	        path.c_str(), pcm.size(), rate);
+}
 #endif
 
 // Reset simulation variables and clocks
@@ -380,6 +423,14 @@ int verilate() {
 		if (clk_sys.IsRising())
 		{
 			audio.Clock(top->AUDIO_L, top->AUDIO_R);
+			if (!audio_wav_path.empty()) {
+				// clk_sys_freq / 44100, rounded
+				if (++audio_decimate >= (clk_sys_freq / 44100)) {
+					audio_decimate = 0;
+					// the core emits unsigned PCM; centre it for the WAV
+					audio_samples.push_back((int16_t)((int)top->AUDIO_L - 32768));
+				}
+			}
 		}
 #endif
 
@@ -388,6 +439,20 @@ int verilate() {
 			uint32_t colour = 0xFF000000 | top->VGA_B << 16 | top->VGA_G << 8 | top->VGA_R;
 			static int prev_frame = 0;
 			video.Clock(top->VGA_HB, top->VGA_VB, top->VGA_HS, top->VGA_VS, colour);
+			if (code_trace_lo >= 0) {
+				uint32_t a = top->dbg_addr;
+				if ((int)a >= code_trace_lo && (int)a <= code_trace_hi)
+					code_seen.insert(a);
+			}
+			if (switch_pc_trace) {
+				uint32_t a = top->dbg_addr;
+				if (a >= 0x0200 && a <= 0x0207) {
+					uint32_t key = (a << 16) | top->dbg_pc;
+					if (switch_pc_seen.insert(key).second)
+						fprintf(stderr, "[swpc] read %04X at PC=%04X\n",
+						        a, (unsigned)top->dbg_pc);
+				}
+			}
 
 			if (raster_probe_frame >= 0 && !rp_done &&
 			    video.count_frame == raster_probe_frame &&
@@ -424,6 +489,22 @@ int verilate() {
 					if (it != screenshot_frames.end()) {
 						fprintf(stderr, "[car_rot] frame=%d value=0x%02X\n",
 					        video.completed_frame, (unsigned)top->dbg_car_rot);
+					{
+						unsigned sd = top->dbg_sound;
+						fprintf(stderr,
+						        "[sound]   frame=%d joy=0x%X speed=%u crash=%u skid=%u tone=%u"
+						        "  inputs bit7=0x%02X bit0=0x%02X reads=%u"
+						        "  strobes motor=%u crash=%u  last bus bytes motor=0x%02X crash=0x%02X\n",
+						        video.completed_frame, (unsigned)top->joystick_0, sd & 0xF, (sd >> 4) & 0xF,
+						        (sd >> 8) & 1, (sd >> 9) & 1,
+						        (unsigned)((top->dbg_inputs >> 8) & 0xFF),
+						        (unsigned)(top->dbg_inputs & 0xFF),
+						        (unsigned)top->dbg_in_count,
+						        (unsigned)(top->dbg_snd_strobes & 0xFF),
+						        (unsigned)((top->dbg_snd_strobes >> 8) & 0xFF),
+						        (unsigned)((top->dbg_snd_strobes >> 16) & 0xFF),
+						        (unsigned)((top->dbg_snd_strobes >> 24) & 0xFF));
+					}
 					save_screenshot(video.completed_frame);
 						screenshot_frames.erase(it);
 					}
@@ -458,10 +539,25 @@ int verilate() {
 						fprintf(stderr, " %02X", (hi << 4) | lo);
 						if ((i & 15) == 15) fprintf(stderr, "\n");
 					}
+					// The 6800's scratchpad at $0000-$00FF, where all the game
+					// state lives. Two 256x4 rams, N1 the high nibble and M1
+					// the low. This is what to compare against MAME when the
+					// two cores read the same switches but behave differently.
+					fprintf(stderr, "=== CPU scratchpad RAM ($0000-$00FF) at frame %d ===\n", dump_ram_at_frame);
+					for (int i = 0; i < 256; i++) {
+						uint8_t hi = root->emu__DOT__superbug__DOT__CPU__DOT__N1__DOT__mem[i] & 0xF;
+						uint8_t lo = root->emu__DOT__superbug__DOT__CPU__DOT__M1__DOT__mem[i] & 0xF;
+						fprintf(stderr, " %02X", (hi << 4) | lo);
+						if ((i & 15) == 15) fprintf(stderr, "\n");
+					}
 					dump_ram_at_frame = -1;  // once
 				}
 				if (stop_at_frame >= 0 && video.completed_frame >= stop_at_frame) {
 					fprintf(stderr, "stop-at-frame %d reached, exiting\n", stop_at_frame);
+					if (!audio_wav_path.empty()) write_wav(audio_wav_path, audio_samples, 44100);
+					if (code_trace_lo >= 0)
+						for (uint32_t a : code_seen)
+							fprintf(stderr, "[code] %04X\n", a);
 					exit(0);
 				}
 				video.frame_complete = false;
@@ -519,6 +615,13 @@ int main(int argc, char** argv, char** env) {
 			if (i + 1 < argc && argv[i + 1][0] != '-') rp_line = atoi(argv[++i]);
 		} else if (!strcmp(argv[i], "--input") && i + 1 < argc) {
 			parse_input_script(argv[++i]);
+		} else if (!strcmp(argv[i], "--audio-wav") && i + 1 < argc) {
+			audio_wav_path = argv[++i];
+		} else if (!strcmp(argv[i], "--code-trace") && i + 2 < argc) {
+			code_trace_lo = (int)strtol(argv[++i], nullptr, 0);
+			code_trace_hi = (int)strtol(argv[++i], nullptr, 0);
+		} else if (!strcmp(argv[i], "--switch-pc-trace")) {
+			switch_pc_trace = true;
 		} else if (!strcmp(argv[i], "--service")) {
 			service_mode = true;
 		} else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
@@ -526,6 +629,7 @@ int main(int argc, char** argv, char** env) {
 			       "  --screenshot <frames>     comma-separated frame numbers\n"
 			       "  --screenshot-name <path>  override output path (single shot)\n"
 			       "  --screenshot-dir <dir>    one PNG per frame into <dir>\n"
+			       "  --audio-wav <path>        capture audio to a 44.1 kHz WAV\n"
 			       "  --input <script>          scripted buttons, e.g.\n"
 			       "                            \"60:coin, 90:start, 120-900:gas\"\n"
 			       "  --stop-at-frame <n>       exit after frame n\n"

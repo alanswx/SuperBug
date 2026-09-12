@@ -353,7 +353,7 @@ gearshift gearshift1
 wire videowht,videoblk,compositesync,lamp;
 
 			
-wire [6:0] audio;
+wire [15:0] audio;
 wire [1:0] video;
 
 ///////////////////////////////////////////////////
@@ -376,7 +376,7 @@ assign r=vid_mono[7:5];
 assign g=vid_mono[7:5];
 assign b=vid_mono[7:5];
 
-assign AUDIO_L={audio,1'b0,8'b00000000};
+assign AUDIO_L = audio;
 assign AUDIO_R=AUDIO_L;
 assign AUDIO_S = 0;
 
@@ -461,7 +461,9 @@ superbug superbug(
 	.Sync_O(compositesync),
 
 	.Coin1_I(~(m_coin|btn_coin_1)),
-	.Coin2_I(~(m_coin|btn_coin_2)),
+	// Coin 2 is its own switch. Driving both from one button looks like a
+        // tampered coin mech to the program and the credit is thrown away.
+        .Coin2_I(~btn_coin_2),
 	.Start_I(~(m_start1|btn_start_1)),
 	.Gas_I(~m_gas),
 	.Gear1_I(gear1),

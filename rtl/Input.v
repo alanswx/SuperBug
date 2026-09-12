@@ -92,80 +92,92 @@ module Input(
         end
     end
     
-    // 74153 data selector/multiplexer at F9, inverting since active-low output is used
-    
-    always @(Adr or Gear3_n or Gear1_n or SteerFlag or Coin1_n or Coin2_n or Start_n or CrashIn_n or TrackSel_n)
+    // 74153 data selector/multiplexer at F9, inverting since active-low
+    // output is used. This drives DBus bit 7.
+    //
+    // The select order here is not Adr[2:0] counting up. Both this mux and E9
+    // below had their inputs listed in schematic order but indexed with the
+    // raw address, which scrambled every signal: gas was answered at offset 4
+    // where the program reads offset 1, so the gas pedal never reached the
+    // CPU at all and the engine sat at its idle value for the whole game.
+    //
+    // The order below is MAME's firetrk_state::input_r reading the BIT_7 port
+    // for superbug, which agrees with the original memory map in
+    // superbug/SUPMEM.MAC.
+    always @(*)
     begin: F9
         case (Adr[2:0])
             3'b000 :
-                InputMux1 <= ((~TrackSel_n));
+                InputMux1 = ((~Gear3_n));
             3'b001 :
-                InputMux1 <= ((~CrashIn_n));
+                InputMux1 = ((~Gear1_n));
             3'b010 :
-                InputMux1 <= ((~Start_n));
+                InputMux1 = ((~SteerFlag));
             3'b011 :
-                InputMux1 <= ((~Coin2_n));
+                InputMux1 = ((~Coin1_n));
             3'b100 :
-                InputMux1 <= ((~Coin1_n));
+                InputMux1 = ((~Coin2_n));
             3'b101 :
-                InputMux1 <= ((~SteerFlag));
+                InputMux1 = ((~Start_n));
             3'b110 :
-                InputMux1 <= ((~Gear1_n));
+                InputMux1 = ((~CrashIn_n));
             3'b111 :
-                InputMux1 <= ((~Gear3_n));
+                InputMux1 = ((~TrackSel_n));
             default :
-                InputMux1 <= 1'b1;
+                InputMux1 = 1'b1;
         endcase
     end
     
-    // 74153 data selector/multiplexer at E9, inverting since active-low output is used 
-    // Note the flipped ordering of address bus inputs
-    
-    always @(Adr or Gear2_n or Gas_n or SteerDir or HScoreRes_n or Test_n or SkidIn_n or Slam_n)
+    // 74153 data selector/multiplexer at E9, inverting since active-low
+    // output is used. This drives DBus bit 0. Same correction as F9: order
+    // taken from MAME's BIT_0 port for superbug.
+    always @(*)
     begin: E9
         case (Adr[2:0])
             3'b000 :
-                InputMux2 <= (~Gear2_n);
-            3'b100 :
-                InputMux2 <= (~Gas_n);
-            3'b010 :
-                InputMux2 <= (~SteerDir);
-            3'b110 :
-                InputMux2 <= (~HScoreRes_n);
+                InputMux2 = (~Gear2_n);
             3'b001 :
-                InputMux2 <= 1'b0;
-            3'b101 :
-                InputMux2 <= (~Test_n);
+                InputMux2 = (~Gas_n);
+            3'b010 :
+                InputMux2 = (~SteerDir);
             3'b011 :
-                InputMux2 <= (~SkidIn_n);
+                InputMux2 = (~HScoreRes_n);
+            3'b100 :
+                InputMux2 = 1'b0;
+            3'b101 :
+                InputMux2 = (~Test_n);
+            3'b110 :
+                InputMux2 = (~SkidIn_n);
             3'b111 :
-                InputMux2 <= (~Slam_n);
+                InputMux2 = (~Slam_n);
             default :
-                InputMux2 <= 1'b1;
+                InputMux2 = 1'b1;
         endcase
     end
     
     // 74153 dual selector/multiplexer at C6
     
-    always @(Adr or DIP_Sw)
+    always @(*)
     begin: C6
         case (Adr[1:0])
             2'b00 :
-                DIP_Mux <= {DIP_Sw[7], DIP_Sw[6]};
+                DIP_Mux = {DIP_Sw[7], DIP_Sw[6]};
             2'b01 :
-                DIP_Mux <= {DIP_Sw[5], DIP_Sw[4]};
+                DIP_Mux = {DIP_Sw[5], DIP_Sw[4]};
             2'b10 :
-                DIP_Mux <= {DIP_Sw[3], DIP_Sw[2]};
+                DIP_Mux = {DIP_Sw[3], DIP_Sw[2]};
             2'b11 :
-                DIP_Mux <= {DIP_Sw[1], DIP_Sw[0]};
+                DIP_Mux = {DIP_Sw[1], DIP_Sw[0]};
             default :
-                DIP_Mux <= 2'b11;
+                DIP_Mux = 2'b11;
         endcase
     end
     
     // Input data mux
-    assign DBus = (In1_n == 1'b0) ? {InputMux1, 6'b111111, InputMux2} : 
-                  (Opt_n == 1'b0) ? {6'b111111, DIP_Mux} : 
+    // Bits 1..6 read back as 0, not 1. MAME's input_r builds the byte from
+    // just bit 0 and bit 7 for superbug and leaves the rest clear.
+    assign DBus = (In1_n == 1'b0) ? {InputMux1, 6'b000000, InputMux2} : 
+                  (Opt_n == 1'b0) ? {6'b000000, DIP_Mux} : 
                   8'hFF;
     
 endmodule

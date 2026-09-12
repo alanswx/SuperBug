@@ -39,6 +39,7 @@ module cpu_mem(
     MotorSnd_n,
     CrashSnd_n,
     SkidSnd_n,
+    ASR_n,
     Adr,
     DBus_in,
     DBus_out,
@@ -84,6 +85,7 @@ module cpu_mem(
     output        MotorSnd_n;
     output        CrashSnd_n;
     output        SkidSnd_n;
+    output        ASR_n;       // extended-play tone strobe ($0220)
     output [15:0] Adr;
     input [7:0]   DBus_in;
     output [7:0]  DBus_out;
@@ -133,7 +135,36 @@ module cpu_mem(
     wire          nmi;
     wire          irq;
     
-    assign Reset = ((~Reset_n));
+    // Watchdog. MAME configures this as `set_vblank_count("screen", 5)`: the
+    // board resets if the program goes five vertical blanks without writing
+    // the kick address. The decode for that write existed already but its
+    // output went nowhere, so a boot that stalled would hang instead of
+    // retrying the way real hardware does.
+    // Firing has to be a pulse, not a level: holding reset would also stop the
+    // program from ever reaching the kick instruction, so the board would
+    // never come back.
+    reg [2:0] wdog_count;
+    reg [7:0] wdog_hold;
+    reg       prev_VBlank_wdog;
+    wire      wdog_reset = (wdog_hold != 8'd0);
+    always @(posedge Clk6) begin: Watchdog
+        prev_VBlank_wdog <= VBlank;
+        if (Reset_n == 1'b0 || WdogReset_n == 1'b0) begin
+            wdog_count <= 3'd0;
+            wdog_hold  <= 8'd0;
+        end else if (VBlank & ~prev_VBlank_wdog) begin
+            if (wdog_count >= 3'd4) begin
+                wdog_count <= 3'd0;
+                wdog_hold  <= 8'hFF;
+            end else begin
+                wdog_count <= wdog_count + 3'd1;
+            end
+        end else if (wdog_hold != 8'd0) begin
+            wdog_hold <= wdog_hold - 8'd1;
+        end
+    end
+
+    assign Reset = ((~Reset_n)) | wdog_reset;
     
     assign H2 = HCount[1];
     assign V16 = VCount[4];
@@ -384,7 +415,10 @@ module cpu_mem(
                    1'b1;
     assign Out2_n = (SysEn == 1'b1 & Adr[9] == 1'b1 & Adr[7:5] == 3'b011) ? 1'b0 : 
                     1'b1;
-    // ASR (where does this go?)	-- Audio related
+    // ASR — the extended-play tone strobe at $0220 (MAME: xtndply_w). This
+    // had no decode at all, so the tone could never be triggered.
+    assign ASR_n = (IO_Wr == 1'b1 & Adr[9] == 1'b1 & Adr[7:5] == 3'b001) ? 1'b0 :
+                   1'b1;
     
     
     always @(posedge Out2_n)

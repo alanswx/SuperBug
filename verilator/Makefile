@@ -51,7 +51,8 @@ CC_OPT =
 
 V_SRC = \
 	sim.v  \
-	../rtl/alpha_numerics.v  ../rtl/car.v  ../rtl/cpu_mem.v  ../rtl/Input.v  ../rtl/mixer.v  ../rtl/playfield.v  ../rtl/pll.v  ../rtl/superbug.v  ../rtl/synchronizer.v \
+	../rtl/alpha_numerics.v  ../rtl/car.v  ../rtl/cpu_mem.v  ../rtl/Input.v  ../rtl/mixer.v  ../rtl/playfield.v  ../rtl/pll.v  ../rtl/superbug.v  ../rtl/synchronizer.v  ../rtl/sound.v \
+	../verilog/enginesound.v \
 	../verilog/cpu68.v  ../verilog/prom.v \
 	sim_roms.v
 

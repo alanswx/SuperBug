@@ -82,6 +82,10 @@ module emu (
 	output		dbg_pfwndo,
 	output		dbg_carena,
 	output	[4:0]	dbg_car_rot,
+	output	[9:0]	dbg_sound,
+	output	[31:0]	dbg_snd_strobes,
+	output	[15:0]	dbg_inputs,
+	output	[15:0]	dbg_in_count,
 	
 	input			service_mode,	// 1 = self-test (Test_I active-low low)
 	input			ioctl_download,
@@ -231,7 +235,9 @@ wire hsync;
 wire vsync;
 wire hblank;
 wire vblank;
-wire audio;
+wire [15:0] audio;
+assign AUDIO_L = audio;
+assign AUDIO_R = audio;
 wire lamp;
 wire lamp2;
 
@@ -250,7 +256,9 @@ superbug superbug(
         .Sync_O(compositesync),
 
         .Coin1_I(~(m_coin|btn_coin_1)),
-        .Coin2_I(~(m_coin|btn_coin_2)),
+        // Coin 2 is its own switch. Driving both from one button looks like a
+        // tampered coin mech to the program and the credit is thrown away.
+        .Coin2_I(~btn_coin_2),
         .Start_I(~(m_start1|btn_start_1)),
         .Gas_I(~m_gas),
         .Gear1_I(gear1),
@@ -282,7 +290,11 @@ superbug superbug(
         .dbg_hcount(dbg_hcount),
         .dbg_pfwndo(dbg_pfwndo),
         .dbg_carena(dbg_carena),
-        .dbg_car_rot(dbg_car_rot)
+        .dbg_car_rot(dbg_car_rot),
+        .dbg_sound(dbg_sound),
+        .dbg_snd_strobes(dbg_snd_strobes),
+        .dbg_inputs(dbg_inputs),
+        .dbg_in_count(dbg_in_count)
         );
 
 	wire clk_6;

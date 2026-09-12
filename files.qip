@@ -18,6 +18,8 @@ set_global_assignment -name VHDL_FILE source/deltasigma.vhd
 set_global_assignment -name VHDL_FILE source/cpu68.vhd
 #set_global_assignment -name VHDL_FILE source/SuperBug.vhd
 set_global_assignment -name VERILOG_FILE rtl/superbug.v
+set_global_assignment -name VERILOG_FILE rtl/sound.v
+set_global_assignment -name VERILOG_FILE verilog/enginesound.v
 #set_global_assignment -name VHDL_FILE source/mixer.vhd
 set_global_assignment -name VERILOG_FILE rtl/mixer.v
 #set_global_assignment -name VHDL_FILE source/alphanumerics.vhd
