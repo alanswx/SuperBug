@@ -128,10 +128,13 @@ boot-timing difference, not a rendering one.
   switches with the same bit pairs the 74153 at C6 presents to the program.
 - 1.6 Vertical orientation on MiSTer. Still no rotation module, so on real
   hardware the game comes out sideways.
-- 1.7 ROM loading. The MRA exists but its `<rom index="0">` block is still
-  ignored: ROMs are baked into Altera memory initialisation files and the
-  download signals into the core go nowhere. The switches half of the MRA
-  works today; the ROM half needs the loader.
+- 1.7 Done for the simulator. Every ROM has a write port fed by the download,
+  with its base address taken from the MRA layout. `make loader` builds with
+  the ROMs left out so they can only come from `--rom`, and both games measure
+  the same that way as with them built in. tools/mra.py builds the packed image
+  from an MRA, so the MRA is the only place the layout is written down. What
+  remains is the Quartus side: files.qip still points at the Altera memory
+  initialisation files rather than inferred RAM.
 - 1.8 Remove the debug-only scroll latches from the CPU memory module.
 - Phase 2 needs tuning against a reference recording. The screech oscillator
   currently runs near 1825 Hz where the original is nearer 1200 Hz, and the
@@ -171,10 +174,8 @@ boot-timing difference, not a rendering one.
   horn and the bell, the second pad's left and right drive the back player's
   wheel, and there is a button for the both-players start.
 
-  Still open for Fire Truck: the ROM loader, so both games ship from one
-  bitstream rather than the simulator reading files directly; the cabinet type
-  switch, fixed at the two-player Fire Truck cabinet rather than Smokey Joe;
-  and the diagnostic buttons.
+  Still open for Fire Truck: the cabinet type switch, fixed at the two-player
+  Fire Truck cabinet rather than Smokey Joe, and the diagnostic buttons.
 
   Sound is now compared against recordings of the reference, which can write a
   WAV of a session. tools/wavcompare.py scores two recordings by how the energy
