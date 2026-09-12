@@ -139,3 +139,48 @@ module ROM_FT_TRAILER (input wire clock, input wire [11:0] address, output reg [
     initial $readmemh("../roms/hex/firetrk_trailer.hex", mem);
     always @(posedge clock) q <= mem[address];
 endmodule
+
+// 256 x 8 RAM. Super Bug uses 32 bytes of it for the alphanumeric display;
+// Fire Truck uses the whole page, which is also the processor's direct page.
+module ram256b (
+    input wire        clock,
+    input wire [7:0]  address,
+    input wire        wren,
+    input wire [7:0]  data,
+    output reg [7:0]  q
+);
+    reg [7:0] mem [0:255];
+    integer i;
+    initial begin
+        q = 8'h00;
+        for (i = 0; i < 256; i = i + 1) mem[i] = 8'h00;
+    end
+    always @(posedge clock) begin
+        if (wren) mem[address] <= data;
+        q <= mem[address];
+    end
+endmodule
+
+// 256 x 8 dual port RAM: one write port for the processor, one read port for
+// the display. Fire Truck's alphanumeric RAM is the processor's direct page,
+// so it is written constantly and cannot be time-shared with the display the
+// way Super Bug's can.
+module dpram256b (
+    input wire        clock,
+    input wire [7:0]  wraddress,
+    input wire        wren,
+    input wire [7:0]  data,
+    input wire [7:0]  rdaddress,
+    output reg [7:0]  q
+);
+    reg [7:0] mem [0:255];
+    integer i;
+    initial begin
+        q = 8'h00;
+        for (i = 0; i < 256; i = i + 1) mem[i] = 8'h00;
+    end
+    always @(posedge clock) begin
+        if (wren) mem[wraddress] <= data;
+        q <= mem[rdaddress];
+    end
+endmodule

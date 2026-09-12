@@ -293,7 +293,8 @@ module superbug(
         .VMA(VMA),
         .BVMA(BVMA),
         .Sys_en(Sys_en),
-        .A_NVideo(A_NVideo)
+        .A_NVideo(A_NVideo),
+        .Game(Game)
     );
     
     

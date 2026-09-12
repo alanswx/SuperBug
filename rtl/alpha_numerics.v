@@ -27,7 +27,8 @@ module alpha_numerics(
     VMA,
     BVMA,
     Sys_en,
-    A_NVideo
+    A_NVideo,
+    Game
 );
     input        Clk6;
     input        Phi2;
@@ -42,6 +43,7 @@ module alpha_numerics(
     output       BVMA;
     output       Sys_en;
     output       A_NVideo;
+    input [1:0]  Game;		// 0 = Super Bug, 1 = Fire Truck
     
     
     //signal H4				: std_logic;
@@ -58,7 +60,8 @@ module alpha_numerics(
     //
     wire         H256_n;
     
-    wire [6:0]   RAM_Addr;
+    wire [7:0]   RAM_Addr;
+    wire [7:0]   RAM_RdAddr;
     wire [7:0]   RAM_Dout2;
     wire [7:0]   RAM_Dout;
     wire         RAM_we;
@@ -134,12 +137,23 @@ module alpha_numerics(
     // reading whatever address the CPU bus happened to hold at the time —
     // making every alpha cell appear identical (single character repeated
     // at every screen position).
-    assign Mux_select = (BVMA == 1'b1 & BA[12:10] == 3'b001 & BA[8] == 1'b0) ? 1'b1 :
-                        1'b0;
+    localparam GAME_FIRETRK = 2'd1;
+    wire firetrk = (Game == GAME_FIRETRK);
+
+    // Fire Truck's alphanumeric RAM is a whole page at $0000 and doubles as
+    // the processor's direct page and stack; only its first thirty-two bytes
+    // are displayed. Super Bug keeps a separate thirty-two byte RAM at $0400.
+    assign Mux_select = firetrk ? (BVMA & BA[13:11] == 3'b000)
+                                : ((BVMA == 1'b1 & BA[12:10] == 3'b001 & BA[8] == 1'b0) ? 1'b1 :
+                                   1'b0);
     
     assign SysEnBA10_8 = (~(Sys_en & BA10and8));
     
-    assign RAMcs_n = (SysEnBA10_8 & VBlank);
+    // Super Bug gates the alphanumeric RAM's chip select with vertical blank,
+    // because the display and the processor share it and the processor only
+    // gets in during retrace. Fire Truck's is the direct page: the processor
+    // writes it all the time and cannot be held off.
+    assign RAMcs_n = firetrk ? ~Mux_select : (SysEnBA10_8 & VBlank);
     //RAMcs_n <= '0' when VBlank = '0' or (BA(10) and BA(8) and Sys_en) = '1' else '1';
     //RAMcs_n <= '0' when VBlank = '1' or (BA(10)='1' and BA(8)='1'  and Sys_en='1') else '1'; -- AJS
     
@@ -148,22 +162,38 @@ module alpha_numerics(
                     1'b0;
     
     // Selectors at P2 and P4
-    assign RAM_Addr = (Mux_select == 1'b0) ? {2'b00, HCount[5], VCount[7:4]} : 
-                      {2'b00, BA[4:0]};
+    // Separate addresses now that the RAM is dual ported: the display always
+    // reads its thirty-two cells, the processor always writes wherever it is.
+    assign RAM_RdAddr = {3'b000, HCount[5], VCount[7:4]};
+    assign RAM_Addr   = firetrk ? BA[7:0] : {3'b000, BA[4:0]};
     
     // Alphanumeric character RAM
     // Real hardware has 128 byte RAM but it seems only 32 bytes are used				
     
-    ram128 P3_RAM(
+    dpram256b P3_RAM(
         .clock(Clk6),
-        .address(RAM_Addr),
+        .wraddress(RAM_Addr),
         .wren(RAM_we),
         .data(BD),
+        .rdaddress(RAM_RdAddr),
         .q(RAM_Dout)
     );
     
     //RAM_Dout<="00001000";
     
+    // Fire Truck's character generator is one byte-wide ROM holding all
+    // thirty-two glyphs, sixteen rows of four bytes each, of which only the
+    // low nibble carries pixels. The four column groups are taken from bytes
+    // 3, 0, 1, 2 across the glyph, two steps round from where the nibble
+    // counter starts. Swept against the reference: the other three offsets
+    // leave the text about nine percent wrong, this one renders it exactly.
+    wire [7:0] ft_char_dout;
+    ROM_FT_CHARS FT_CHARS(
+        .clock(Clk6),
+        .address({RAM_Dout[4:0], VCount[3:0], HCountA[3:2] + 2'd2}),
+        .q(ft_char_dout)
+    );
+
     assign rom_m3_addr = {RAM_Dout[3:0], VCount[3:0], HCountA[3:2]};
 
     ROM_M3 M3_ROM(
@@ -181,7 +211,8 @@ module alpha_numerics(
     );
     
     // Alphanumeric ROMs are selected by RAM_Dout(4)
-    assign AlphaROM_Dout = (RAM_Dout[4] == 1'b0) ? M3_Dout : 
+    assign AlphaROM_Dout = firetrk      ? ft_char_dout[3:0] :
+                           (RAM_Dout[4] == 1'b0) ? M3_Dout : 
                            N3_Dout;
     
     assign ShiftLoad = (HCountA[0] & HCountA[1]);
