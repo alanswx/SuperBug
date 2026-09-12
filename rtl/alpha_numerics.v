@@ -126,7 +126,10 @@ module alpha_numerics(
     // module for its PfldRAM/PF_Wren decode; both want the address
     // window to be visible across the whole CPU access cycle, not just
     // its phase-2-high half.
-    assign Sys_en = (BVMA & BA12nor11);
+    // For Fire Truck this has to reach the playfield page at $0800 as well as
+    // the alphanumeric page at $0000, so it covers everything below the
+    // program ROM.
+    assign Sys_en = firetrk ? (BVMA & ~BA[13]) : (BVMA & BA12nor11);
     assign BVMA = VMA;		//((not BA(14)) and VMA);
     
     // Mux_select=1 when CPU is at the alphanumeric RAM ($0400-$041F per MAME):

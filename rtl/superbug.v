@@ -336,7 +336,8 @@ module superbug(
         .PfWndo(PFWndo),
         .PCC1(PCC1),
         .PCC2(PCC2),
-        .Pfld(Pfld)
+        .Pfld(Pfld),
+        .Game(Game)
     );
     
     

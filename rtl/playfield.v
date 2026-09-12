@@ -37,7 +37,8 @@ module playfield(
     PfWndo,
     PCC1,
     PCC2,
-    Pfld
+    Pfld,
+    Game
 );
     input        Clk6;
     input        RW_n;
@@ -62,6 +63,7 @@ module playfield(
     output       PCC1;
     output       PCC2;
     output       Pfld;
+    input [1:0]  Game;		// 0 = Super Bug, 1 = Fire Truck
     
     
     wire         H1;
@@ -151,11 +153,30 @@ module playfield(
     // nibble of every cell: four stray pixels at every cell boundary, which
     // measured as every mismatch against the reference landing in one
     // quarter of each sixteen-pixel cell.
+    localparam GAME_FIRETRK = 2'd1;
+    wire firetrk = (Game == GAME_FIRETRK);
+
     wire [7:0] PHP_fetch = PHP + 8'd2;
     reg  [1:0] PHP_nibble_d;
     always @(posedge Clk6) PHP_nibble_d <= PHP_fetch[3:2];
 
     assign PFROM_Adr = {PD[3:0], PVP[3:0], PHP_nibble_d};
+
+    // Fire Truck's tiles are one byte-wide ROM holding all sixty-four shapes,
+    // sixteen rows of two bytes, eight pixels to a byte with the leftmost
+    // pixel in the most significant bit. Super Bug spreads its across three
+    // nibble-wide PROMs. The nibble counter's high bit picks the byte and its
+    // low bit picks which half of that byte, and the four bits are reversed on
+    // the way out because the shift register clocks out least significant
+    // first.
+    wire [7:0] ft_tile_dout;
+    ROM_FT_TILES FT_TILES(
+        .clock(Clk6),
+        .address({PD[5:0], PVP[3:0], PHP_nibble_d[1]}),
+        .q(ft_tile_dout)
+    );
+    wire [3:0] ft_half = PHP_nibble_d[0] ? ft_tile_dout[3:0] : ft_tile_dout[7:4];
+    wire [3:0] ft_vid  = {ft_half[0], ft_half[1], ft_half[2], ft_half[3]};
     
     // Playfield ROM
     
@@ -188,7 +209,8 @@ module playfield(
     always @(*)
     begin: PF_ROM_mux
         Vid <= {4{1'b0}};
-        case (PD[5:4])
+        if (firetrk) Vid <= ft_vid;
+        else case (PD[5:4])
             2'b00 : Vid <= F5_Dout;
             2'b01 : Vid <= H5_Dout;
             2'b10 : Vid <= E5_Dout;
@@ -233,7 +255,8 @@ module playfield(
     // Allow writes any time the CPU is at the playfield-RAM range; the
     // mux at PF_RAM_Adr already routes the right address.
     assign PF_Wren = (RnW & Sys_En & PfldRAM);
-    assign PfldRAM = (Sys_En & BA[10] & BA[8]);
+    assign PfldRAM = firetrk ? (Sys_En & BA[13:11] == 3'b001)   // $0800-$0FFF
+                             : (Sys_En & BA[10] & BA[8]);       // $0500-$05FF
     assign PF_RAMce_n = (~(((~VBlank)) | PfldRAM));
     
     // Same VBlank-gate issue as PF_Wren above: with the slow cpu68 most
