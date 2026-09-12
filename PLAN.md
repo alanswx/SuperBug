@@ -57,9 +57,24 @@ scratchpad differences that remain during attract are transient values sampled
 at different points in the program, not a divergence: the stable game state
 matches.
 
+**Known cosmetic difference**
+
+For the first four frames after power-on the top text row shows the character
+the alphanumeric RAM powers up with, where the reference has already written
+its message. From frame 5 onward the whole frame matches exactly. This is a
+boot-timing difference, not a rendering one.
+
 **Still open**
 
-- 1.3 Playfield cell-edge residual, now 0.04% to 0.67% per band.
+- 1.3 Done. The shape ROM was addressed with a cell code one cycle old and a
+  current nibble index, so every cell's first nibble came from the tile that
+  had just ended. Whole-frame mismatch is now 0.05% to 0.12%. What remains is
+  the window's trailing edge, two pixels wider than the reference driver's
+  hand-picked clip rectangle.
+- Collision detection now exists. The two 74LS109 flip-flops that hold the
+  crash and skid flags were commented out in the VHDL and never written here,
+  so both outputs floated and the program read a permanent crash and skid. The
+  car span on the spot and the screech never stopped.
 - 1.5 Done. DIP switches now arrive from the MRA as an ioctl index 254
   download and the menu carries a DIP page instead of four hand-written
   entries that did nothing. `releases/Super Bug.mra` declares the four
