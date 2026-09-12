@@ -41,34 +41,37 @@ in the original plan and now sits at the top of the list.
   were scrambled, so the gas pedal was answered at the wrong offset and never
   reached the CPU at all.
 
-**Blocker: a game cannot be started**
+**Blocker: resolved**
 
-Coin and start are read correctly now, and the CPU sees the same switch values
-MAME does, but the program never reaches its game-start routine at $170F.
-Before the multiplexer fix a game could be started, but only by accident: the
-start switch was answered by the steer flag, which reads as permanently
-pressed from reset.
+A game could never be started on purpose. The start button was wired into the
+coin line, which holds the coin switch closed for as long as start is held, and
+the interrupt handler checks the coin switch first and exits as soon as it sees
+one. The start check was never reached. Coin is now its own button.
 
-What is established:
+With that fixed the game reaches play, the sound registers carry real values,
+and the motor register matches the reference exactly.
 
-- The CPU executes the same coin-handling code as MAME as far as $179B, then
-  diverges. Set-diffing executed ROM addresses shows MAME entering $170F-$173E
-  and a large amount of game code we never reach.
-- The 6800 scratchpad already differs during plain attract mode, with no input
-  at all, in what look like table pointers and free-running counters, even
-  though the video matches MAME frame for frame.
-- Our vertical timing is 256 lines per frame. The reference is 262. That is a
-  real difference in CPU time per frame and is the strongest lead. Decoding
-  the sync PROM to recover the true 262-line sequence did not work with the
-  obvious bit assignment, so the address bit order or the feedback path in
-  `rtl/synchronizer.v` needs checking against the schematic.
+The frame length was also wrong: the vertical counter wrapped at 256 lines
+where the board runs 262, which is 240 visible plus 22 blanked. Fixed. The
+scratchpad differences that remain during attract are transient values sampled
+at different points in the program, not a divergence: the stable game state
+matches.
 
-Next step: fix the frame length, then re-diff the scratchpad at an early frame
-with no input. The scratchpad should match exactly during attract.
+**Still open**
 
-**Still open**: 1.3 playfield cell-edge residual, the rest of 1.5, and 1.6
-through 1.8. Phase 2 needs tuning against a reference recording. Phase 3 has
-not been started.
+- 1.3 Playfield cell-edge residual, now 0.04% to 0.67% per band.
+- 1.5 The DIP switches are still hardcoded, so the four game-configuration
+  options in the menu do nothing. The coinage switch also has no path to the
+  data bus at all: the option read forces bits 2 and 3 low, where the board
+  puts coinage.
+- 1.6 Vertical orientation on MiSTer. Still no rotation module, so on real
+  hardware the game comes out sideways.
+- 1.7 ROM loading and the MRA. The download signals still go nowhere.
+- 1.8 Remove the debug-only scroll latches from the CPU memory module.
+- Phase 2 needs tuning against a reference recording. The screech oscillator
+  currently runs near 1825 Hz where the original is nearer 1200 Hz, and the
+  engine has not been compared against a recording at all.
+- Phase 3 has not been started.
 
 ---
 
