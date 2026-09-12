@@ -68,3 +68,6 @@ verilator/superbug.zip
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Packed ROM images, rebuilt from the MRAs by tools/mra.py
+*.rom

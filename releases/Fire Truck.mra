@@ -1,52 +1,53 @@
 <misterromdescription>
     <name>Fire Truck</name>
-    <setname>firetrk</setname>
+    <setname>firetrka</setname>
     <rbf>Arcade-SuperBug</rbf>
     <year>1978</year>
     <manufacturer>Atari</manufacturer>
     <category>Driving</category>
 
-    <!-- Game select. The core reads this as a one byte download at index 1:
+    <!-- Game select, read by the core as a one byte download at index 1.
          0 is Super Bug, 1 is Fire Truck. -->
     <rom index="1"><part>01</part></rom>
 
-    <rom index="0" zip="firetrk.zip" md5="none">
-        <!-- Program, $2000-$3FFF. The lower half is two byte-wide ROMs; the
-             upper half is two pairs of nibble-wide PROMs, high nibble first,
-             which the core's loader recombines. -->
-        <part name="032823-02.c1"/>
-        <part name="032824-01.d1"/>
-        <part name="032816-01.k1"/>
-        <part name="032820-01.k2"/>
-        <part name="032815-01.j1"/>
-        <part name="032819-01.j2"/>
+    <!--
+        This is the ROM version of the set. The earlier PROM version carries
+        identical data but delivers the upper half of the program as two pairs
+        of nibble-wide PROMs, which an MRA cannot recombine because interleave
+        works a byte at a time. Byte-wide throughout keeps the core's loader
+        simple.
+    -->
+    <rom index="0" zip="firetrka.zip" md5="none">
+        <!-- Program, $2000-$3FFF -->
+        <part name="032823-02.c1"  crc="9570bdd3"/>
+        <part name="032824-01.d1"  crc="a5fc5629"/>
+        <part name="032825-02.bin" crc="fa6f050f"/>
+        <part name="032826-02.bin" crc="e9080179"/>
         <!-- Alphanumeric character generator -->
-        <part name="032827-01.r3"/>
+        <part name="032827-01.r3"  crc="cca31d2b"/>
         <!-- Playfield tiles -->
-        <part name="032828-02.f5"/>
+        <part name="032828-02.f5"  crc="68ef5f19"/>
         <!-- Truck sprite -->
-        <part name="032831-01.p7"/>
-        <!-- Trailer sprite -->
-        <part name="032829-01.j5"/>
-        <part name="032830-01.l5"/>
+        <part name="032831-01.p7"  crc="bb8d144f"/>
+        <!-- Trailer sprite, eight frames across two ROMs -->
+        <part name="032829-01.j5"  crc="e7267d71"/>
+        <part name="032830-01.l5"  crc="e4d8b685"/>
         <!-- Sync PROM, the same part Super Bug uses -->
-        <part name="009114.prm"/>
+        <part name="009114.prm"    crc="b8094b4c"/>
     </rom>
 
     <!--
-        Same four switches as Super Bug, in the order the multiplexer presents
-        them. Fire Truck also puts coinage on the first bank rather than
-        leaving it empty, which the input module still has to be taught.
-
-        Default 0x98 is 1 coin 1 play, 90 seconds, medium extended play,
-        English.
+        Same four settings as Super Bug and the same byte layout, but Fire
+        Truck reads its second bank in a different order and puts coinage on
+        the first bank, which the core's input module handles.
     -->
     <switches default="98" base="16">
-        <dip name="Language"       bits="0,1" ids="English,French,Spanish,German"/>
-        <dip name="Extended Play"  bits="2,3" ids="Never,Liberal,Medium,Conservative"/>
-        <dip name="Game Time"      bits="4,5" ids="60 Seconds,90 Seconds,120 Seconds,150 Seconds"/>
-        <dip name="Coinage"        bits="6,7" ids="Free Play,1 Coin 2 Plays,1 Coin 1 Play,2 Coins 1 Play"/>
+        <dip name="Language"      bits="0,1" ids="English,French,Spanish,German"/>
+        <dip name="Extended Play" bits="2,3" ids="Never,Liberal,Medium,Conservative"/>
+        <dip name="Game Time"     bits="4,5" ids="60 Seconds,90 Seconds,120 Seconds,150 Seconds"/>
+        <dip name="Coinage"       bits="6,7" ids="Free Play,1 Coin 2 Plays,1 Coin 1 Play,2 Coins 1 Play"/>
     </switches>
 
-    <buttons names="Gas,Horn,Bell,Track Select,Start 1P,Start 2P,Coin" default="A,B,X,Y,Start,Select,R"/>
+    <buttons names="Gas,Horn,Bell,Track Select,Start Front,Start Back,Coin,Start Both"
+             default="A,B,X,Y,Start,Select,R,L"/>
 </misterromdescription>

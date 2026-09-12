@@ -6,43 +6,43 @@
     <manufacturer>Atari (Kee Games)</manufacturer>
     <category>Driving</category>
 
-    <!-- Game select. The core reads this as a one byte download at index 1:
+    <!-- Game select, read by the core as a one byte download at index 1.
          0 is Super Bug, 1 is Fire Truck. -->
     <rom index="1"><part>00</part></rom>
 
     <rom index="0" zip="superbug.zip" md5="none">
         <!-- Program, $0800-$1FFF -->
-        <part name="009121.d1"/>
-        <part name="009122.c1"/>
-        <part name="009123.a1"/>
-        <!-- Alphanumeric character generator -->
-        <part name="009124.m3"/>
-        <part name="009471.n3"/>
-        <!-- Playfield tiles -->
-        <part name="009126.f5"/>
-        <part name="009472.h5"/>
-        <part name="009127.e5"/>
-        <!-- Car sprite -->
-        <part name="009125.k6"/>
-        <!-- Sync PROM -->
-        <part name="009114.prm"/>
+        <part name="9121.d1" crc="350df308"/>
+        <part name="9122.c1" crc="eb6e3e37"/>
+        <part name="9123.a1" crc="f42c6bbe"/>
+        <!-- Alphanumeric character generator, low nibble of each byte -->
+        <part name="9124.m3" crc="f8af8dd5"/>
+        <part name="9471.n3" crc="52250698"/>
+        <!-- Playfield tiles, low nibble of each byte -->
+        <part name="9126.f5" crc="ee695137"/>
+        <part name="9472.h5" crc="5ddb80ac"/>
+        <part name="9127.e5" crc="be1386b4"/>
+        <!-- Car sprite, four frames packed into the low nibble -->
+        <part name="9125.k6" crc="a3c835df"/>
+        <!-- Sync PROM, the same part Fire Truck uses -->
+        <part name="9114.prm" crc="b8094b4c"/>
     </rom>
 
     <!--
-        One bank of switches. The pairs below are in the order the 74153 at C6
-        presents them to the program: coinage first, then game time, extended
-        play and language. Each pair's low bit is listed first, so the value
-        the program reads is (second bit * 2) + (first bit).
+        One bank of switches. The pairs are in the order the 74153 at C6
+        presents them to the program. Each pair's low bit is listed first, so
+        the value the program reads is (second bit * 2) + (first bit).
 
-        Default 0x98 is 1 coin 1 play, 90 seconds, medium extended play,
+        Default 0x98 is 1 coin 1 play, 90 seconds, medium extended play and
         English, which is what the reference driver defaults to.
     -->
     <switches default="98" base="16">
-        <dip name="Language"       bits="0,1" ids="English,French,Spanish,German"/>
-        <dip name="Extended Play"  bits="2,3" ids="Never,Liberal,Medium,Conservative"/>
-        <dip name="Game Time"      bits="4,5" ids="60 Seconds,90 Seconds,120 Seconds,150 Seconds"/>
-        <dip name="Coinage"        bits="6,7" ids="Free Play,1 Coin 2 Plays,1 Coin 1 Play,2 Coins 1 Play"/>
+        <dip name="Language"      bits="0,1" ids="English,French,Spanish,German"/>
+        <dip name="Extended Play" bits="2,3" ids="Never,Liberal,Medium,Conservative"/>
+        <dip name="Game Time"     bits="4,5" ids="60 Seconds,90 Seconds,120 Seconds,150 Seconds"/>
+        <dip name="Coinage"       bits="6,7" ids="Free Play,1 Coin 2 Plays,1 Coin 1 Play,2 Coins 1 Play"/>
     </switches>
 
-    <buttons names="Gas,Gear Up,Gear Down,Track Select,Start 1P,Start 2P,Coin" default="A,B,X,Y,Start,Select,R"/>
+    <buttons names="Gas,Gear Up,Gear Down,Track Select,Start 1P,Start 2P,Coin,Start Both"
+             default="A,B,X,Y,Start,Select,R,L"/>
 </misterromdescription>
