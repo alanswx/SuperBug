@@ -183,7 +183,14 @@ module car(
     // this fix.
     assign R_Sel = ({R1, R0});
     
-    always @(*)
+    // Keep the sensitivity list explicit. Widening it to a wildcard moved
+    // Super Bug's car by enough to cost a fifth of a percent of the frame:
+    // the Super Bug ROM below is clocked from the 50 MHz input rather than the
+    // pixel clock like everything else in the core, and the simulator orders
+    // that against a wildcard-sensitive block differently. Worth cleaning up
+    // by moving that ROM onto the pixel clock, but not while it is the only
+    // thing standing between this and a known-good reference match.
+    always @(CarROM_Dout or R_Sel or CarEna_n or ft_pixel or firetrk)
     begin: K7
         if (CarEna_n == 1'b0 && firetrk)
             CarVideo <= ft_pixel;
