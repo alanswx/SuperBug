@@ -26,7 +26,8 @@ module car(
     CarRot_n,
     CarVideo,
     CarEna_dbg,
-    CarRot_dbg
+    CarRot_dbg,
+    Game
 );
     input        Clk6;
     input        Clk50;
@@ -39,6 +40,7 @@ module car(
     output reg   CarVideo;
     output       CarEna_dbg;   // sprite window enable, for raster-position debugging
     output [4:0] CarRot_dbg;   // latched rotation register, write-only to the CPU
+    input [1:0]  Game;		// 0 = Super Bug, 1 = Fire Truck
     
     
     wire         H1;
@@ -141,6 +143,25 @@ module car(
         .q(CarROM_Dout)
     );
     
+    localparam GAME_FIRETRK = 2'd1;
+    wire firetrk = (Game == GAME_FIRETRK);
+
+    // Fire Truck's truck ROM is laid out nothing like Super Bug's. Super Bug
+    // packs its four frames into the four bits of every nibble, one pixel per
+    // byte along one axis. Fire Truck gives each frame its own 256 bytes:
+    // thirty-two lines of eight bytes, four pixels in the low nibble of each,
+    // leftmost pixel in the most significant bit of that nibble. It also takes
+    // the frame straight from the rotation register rather than inverting it.
+    wire [4:0] CV = {CV16, CV8, CV4, CV2, CV1};
+    wire [4:0] CH = {CH16, CH8, CH4, CH2, CH1};
+    wire [7:0] ft_car_dout;
+    ROM_FT_CAR FT_CAR(
+        .clock(Clk6),
+        .address({R1, R0, CV, CH[4:2]}),
+        .q(ft_car_dout)
+    );
+    wire ft_pixel = ft_car_dout[3 - CH[1:0]];
+
     // Frame-select index.
     //
     // MAME's superbug_state::draw_car computes `code = ~car_rot & 0x03` and
@@ -162,9 +183,11 @@ module car(
     // this fix.
     assign R_Sel = ({R1, R0});
     
-    always @(CarROM_Dout or R_Sel or CarEna_n)
+    always @(*)
     begin: K7
-        if (CarEna_n == 1'b0)
+        if (CarEna_n == 1'b0 && firetrk)
+            CarVideo <= ft_pixel;
+        else if (CarEna_n == 1'b0)
             case (R_Sel)
                 2'b00 :
                     CarVideo <= CarROM_Dout[0];

@@ -309,7 +309,8 @@ module superbug(
         .CarRot_n(CarRot_n),
         .CarVideo(CarVideo),
         .CarEna_dbg(dbg_carena),
-        .CarRot_dbg(dbg_car_rot)
+        .CarRot_dbg(dbg_car_rot),
+        .Game(Game)
     );
     
     // AJS put this back in (playfield)
