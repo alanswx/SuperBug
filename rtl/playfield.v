@@ -305,7 +305,7 @@ module playfield(
             PHP_load_value <= BD;
 
         if (prev_VBlank_php & ~VBlank)
-            PHP <= PHP_load_value + 8'd16;
+            PHP <= PHP_load_value + 8'd3;
         else if (H256 & ~VBlank)
             PHP <= PHP + 1;
     end
@@ -408,11 +408,21 @@ module playfield(
         end
     end
     
-    // MAME clips the unrotated playfield to x=0x02a..0x115. In the
-    // rotated Verilator image, the old trailing edge allowed one extra
-    // 8-pixel slice to wrap into the top of the screen. Tighten that
-    // edge by also blanking when H8 is high in the final H32 group.
-    assign Window_en = H256 & ((~(H128 & H64 & H32 & (H16 | H8))));
+    // Sheet 4: Z6-22 NANDs 16H/32H/64H/128H, N9-08 ANDs that with 256H, and
+    // L9 latches the result on the rising edge of 8H with VBLANK as an async
+    // clear. No 8H term belongs in the NAND — an earlier version added one to
+    // suppress a slice that wrapped into the top of the rotated image, but
+    // that cost twelve pixels of window and the real cause was elsewhere.
+    //
+    // Measured with `--raster-probe`, in visible-raster pixels where x=0 is
+    // the first pixel after horizontal blanking:
+    //   with the extra 8H term   window x=40..263, width 224
+    //   schematic form           window x=40..279, width 240
+    //   MAME's clip rectangle    window x=42..277, width 236
+    // MAME's rectangle is a hand-picked driver constant and cannot be
+    // produced by a latch that only updates every sixteen pixels, so the
+    // schematic form is the one to keep.
+    assign Window_en = H256 & ((~(H128 & H64 & H32 & H16)));
     
     // 9316 H7 on the schematic latches PCC1/PCC2/CrashCode/SkidCode
     // synchronously on Clk6 when PE = ~LOAD_PD goes low (LOAD_PD =

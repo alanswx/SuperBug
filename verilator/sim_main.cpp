@@ -137,10 +137,23 @@ void resetSim() {
 std::vector<int> screenshot_frames;
 bool screenshot_mode = false;
 std::string screenshot_name_override;
+// --screenshot-dir writes one PNG per captured frame into a directory, which
+// is what the multi-frame comparison script needs; --screenshot-name writes a
+// single fixed path and only makes sense for one frame.
+std::string screenshot_dir;
 int stop_at_frame = -1;
 bool headless_mode = false;
 bool service_mode = false;  // --service: hold the self-test switch active
 int dump_ram_at_frame = -1;
+// --raster-probe N: on frame N, report where the playfield window and the car
+// sprite window open and close, measured in visible-raster pixels so the
+// numbers line up directly with MAME's playfield_window rectangle.
+int raster_probe_frame = -1;
+static int rp_line = 140;          // scanline to sample, mid-screen by default
+static int rp_pf_first = -1, rp_pf_last = -1;
+static int rp_car_first = -1, rp_car_last = -1;
+static int rp_h_at_x0 = -1;
+static bool rp_done = false;
 
 // CPU trace
 std::string trace_path;
@@ -154,7 +167,10 @@ void save_screenshot(int frame_number) {
 		return;
 	}
 	char filename[512];
-	if (!screenshot_name_override.empty()) {
+	if (!screenshot_dir.empty()) {
+		snprintf(filename, sizeof(filename), "%s/v_frame_%04d.png",
+		         screenshot_dir.c_str(), frame_number);
+	} else if (!screenshot_name_override.empty()) {
 		snprintf(filename, sizeof(filename), "%s", screenshot_name_override.c_str());
 	} else {
 		snprintf(filename, sizeof(filename), "screenshot_frame_%04d.png", frame_number);
@@ -306,6 +322,33 @@ int verilate() {
 			uint32_t colour = 0xFF000000 | top->VGA_B << 16 | top->VGA_G << 8 | top->VGA_R;
 			static int prev_frame = 0;
 			video.Clock(top->VGA_HB, top->VGA_VB, top->VGA_HS, top->VGA_VS, colour);
+
+			if (raster_probe_frame >= 0 && !rp_done &&
+			    video.count_frame == raster_probe_frame &&
+			    video.count_line == rp_line && !top->VGA_HB && !top->VGA_VB) {
+				int x = video.count_pixel - 1;      // 0 at the first visible pixel
+				if (x == 0) rp_h_at_x0 = top->dbg_hcount;
+				if (top->dbg_pfwndo) {
+					if (rp_pf_first < 0) rp_pf_first = x;
+					rp_pf_last = x;
+				}
+				if (top->dbg_carena) {
+					if (rp_car_first < 0) rp_car_first = x;
+					rp_car_last = x;
+				}
+			}
+			if (raster_probe_frame >= 0 && !rp_done && rp_pf_first >= 0 &&
+			    video.count_line > rp_line) {
+				fprintf(stderr,
+				        "[raster] frame=%d line=%d  hcount at x=0 is %d\n"
+				        "[raster]   playfield window x=%d..%d  (width %d)\n"
+				        "[raster]   car window       x=%d..%d  (width %d)\n"
+				        "[raster]   MAME reference: playfield window x=42..277 (width 236)\n",
+				        raster_probe_frame, rp_line, rp_h_at_x0,
+				        rp_pf_first, rp_pf_last, rp_pf_last - rp_pf_first + 1,
+				        rp_car_first, rp_car_last, rp_car_last - rp_car_first + 1);
+				rp_done = true;
+			}
 			if (video.frame_complete && video.completed_frame != prev_frame) {
 				fprintf(stderr, "[frame] %d (t=%llu)\n",
 				        video.completed_frame, (unsigned long long)main_time);
@@ -391,6 +434,8 @@ int main(int argc, char** argv, char** env) {
 			parse_screenshot_frames(argv[++i]);
 		} else if (!strcmp(argv[i], "--screenshot-name") && i + 1 < argc) {
 			screenshot_name_override = argv[++i];
+		} else if (!strcmp(argv[i], "--screenshot-dir") && i + 1 < argc) {
+			screenshot_dir = argv[++i];
 		} else if (!strcmp(argv[i], "--stop-at-frame") && i + 1 < argc) {
 			stop_at_frame = atoi(argv[++i]);
 		} else if (!strcmp(argv[i], "--headless")) {
@@ -401,12 +446,16 @@ int main(int argc, char** argv, char** env) {
 			trace_max = atoi(argv[++i]);
 		} else if (!strcmp(argv[i], "--dump-ram") && i + 1 < argc) {
 			dump_ram_at_frame = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "--raster-probe") && i + 1 < argc) {
+			raster_probe_frame = atoi(argv[++i]);
+			if (i + 1 < argc && argv[i + 1][0] != '-') rp_line = atoi(argv[++i]);
 		} else if (!strcmp(argv[i], "--service")) {
 			service_mode = true;
 		} else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
 			printf("Super Bug Verilator sim\n"
 			       "  --screenshot <frames>     comma-separated frame numbers\n"
 			       "  --screenshot-name <path>  override output path (single shot)\n"
+			       "  --screenshot-dir <dir>    one PNG per frame into <dir>\n"
 			       "  --stop-at-frame <n>       exit after frame n\n"
 			       "  --service                 hold self-test switch active (matches MAME selftest.avi)\n"
 			       "  --headless                hint for batch mode (still opens window)\n");

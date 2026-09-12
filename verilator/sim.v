@@ -78,6 +78,9 @@ module emu (
 	output	[7:0]	dbg_acca,
 	output	[7:0]	dbg_accb,
 	output	[7:0]	dbg_cc,
+	output	[8:0]	dbg_hcount,
+	output		dbg_pfwndo,
+	output		dbg_carena,
 	
 	input			service_mode,	// 1 = self-test (Test_I active-low low)
 	input			ioctl_download,
@@ -267,7 +270,10 @@ superbug superbug(
         .dbg_op_fetch(dbg_op_fetch),
         .dbg_acca(dbg_acca),
         .dbg_accb(dbg_accb),
-        .dbg_cc(dbg_cc)
+        .dbg_cc(dbg_cc),
+        .dbg_hcount(dbg_hcount),
+        .dbg_pfwndo(dbg_pfwndo),
+        .dbg_carena(dbg_carena)
         );
 
 	wire clk_6;

@@ -24,7 +24,8 @@ module car(
     HCount,
     VCount,
     CarRot_n,
-    CarVideo
+    CarVideo,
+    CarEna_dbg
 );
     input        Clk6;
     input        Clk50;
@@ -35,6 +36,7 @@ module car(
     input [7:0]  VCount;
     input        CarRot_n;
     output reg   CarVideo;
+    output       CarEna_dbg;   // sprite window enable, for raster-position debugging
     
     
     wire         H1;
@@ -97,16 +99,26 @@ module car(
     
     wire [1:0]   R_Sel;
     
-    assign H1 = HCount[0];
-    assign H2 = HCount[1];
-    assign H4 = HCount[2];
-    assign H8 = HCount[3];
-    assign H16 = HCount[4];
-    assign H32 = HCount[5];
-    assign H64 = HCount[6];
-    assign H128 = HCount[7];
+    // The car's horizontal decode runs two pixels ahead of the raw H counter.
+    // The sprite window signal itself lines up with MAME exactly — measured
+    // with `--raster-probe`, both put it at visible-raster x=144..175 — but
+    // there are two pixels of pipeline between the video generators and the
+    // displayed pixel, so without compensation the sprite is drawn at
+    // x=147..177 and spills past its own window. Advancing the whole
+    // horizontal decode by two moves window and sprite together and lands the
+    // drawn car on MAME's pixels exactly.
+    wire [8:0] HCountC = HCount + 9'd2;
+
+    assign H1 = HCountC[0];
+    assign H2 = HCountC[1];
+    assign H4 = HCountC[2];
+    assign H8 = HCountC[3];
+    assign H16 = HCountC[4];
+    assign H32 = HCountC[5];
+    assign H64 = HCountC[6];
+    assign H128 = HCountC[7];
     assign H128n = (~H128);
-    assign H256 = HCount[8];
+    assign H256 = HCountC[8];
     
     assign V1 = VCount[0];
     assign V2 = VCount[1];
@@ -127,18 +139,26 @@ module car(
         .q(CarROM_Dout)
     );
     
-    // Frame-select index. Per MAME's superbug_state::draw_car:
-    //   code = ~*m_car_rot & 0x03;
-    // i.e. bits [1:0] of the car_rot register are bit-inverted before
-    // being used to pick the sprite frame. Our K6 ROM packs 4 sprite
-    // frames into the 4 bits at each ROM word — bit 0 holds frame 0's
-    // pixel, bit 3 holds frame 3's. So R_Sel must be ~{R1,R0} to match
-    // MAME's frame numbering. Without the invert, CPU writes of 00..03
-    // to \$0180 picked bits 0..3 (frames 0..3 in our numbering), which
-    // is the *opposite* of what the program intends — the car points
-    // the wrong direction for any given rotation value, and as the
-    // player turns left the sprite rotates right and vice versa.
-    assign R_Sel = ({~R1, ~R0});
+    // Frame-select index.
+    //
+    // MAME's superbug_state::draw_car computes `code = ~car_rot & 0x03` and
+    // then draws gfx element `code`. That looks like an inversion, but the
+    // element number is not the ROM nibble bit: superbug_car_layout1 has a
+    // character increment of one BIT, so element N starts at bit offset
+    // (4 + N) inside each byte. MAME numbers bit offsets MSB-first, so offset
+    // 4 is value bit 3 and offset 7 is value bit 0 — element N lives in
+    // nibble bit (3 - N).
+    //
+    // Composing the two: nibble bit = 3 - code = 3 - (3 - car_rot[1:0])
+    //                              = car_rot[1:0] = {R1, R0}.
+    //
+    // So the register's low two bits index the ROM nibble directly and no
+    // inversion belongs here. Verified against the ROM image: at car_rot=0x0C
+    // MAME selects nibble bit 0, which decodes to the symmetric upright car
+    // it draws in attract mode. Selecting bit 3 instead yields the frame
+    // rotated by about thirty degrees, which is what this core drew before
+    // this fix.
+    assign R_Sel = ({R1, R0});
     
     always @(CarROM_Dout or R_Sel or CarEna_n)
     begin: K7
@@ -174,6 +194,7 @@ module car(
         if (V8  & ~prev_V8 ) M7Qb <= V128n & V64 & V32;
     end
     assign CarEna_n = ~(M7Qa & M7Qb);
+    assign CarEna_dbg = ~CarEna_n;
     
     // L4 — car rotation register (CPU writes to \$0180).
     // Schematic uses rising edge of CarRot_n; Verilator's multi-edge

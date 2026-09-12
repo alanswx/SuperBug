@@ -100,7 +100,16 @@ module alpha_numerics(
     //V64 <= VCount(6);
     //V128 <= VCount(7);
     
-    assign H256_n = ((~HCount[8]));
+    // The whole alphanumeric datapath runs one pixel ahead of the raw H
+    // counter. Measured against MAME at frame 400, the glyphs were shape-exact
+    // but sat one pixel further right than the reference; advancing every
+    // consumer of HCount by one keeps the layer internally consistent while
+    // moving it back into place. Advancing only the shift-register load
+    // instead fixes the position but re-cuts the glyph across its nibble
+    // boundaries, which measured worse.
+    wire [8:0] HCountA = HCount + 9'd1;
+
+    assign H256_n = ((~HCountA[8]));
     
     //BA10and8 <= (BA(10) and BA(8));
     assign BA10and8 = BA[10] & (~BA[8]);
@@ -155,15 +164,15 @@ module alpha_numerics(
     
     //RAM_Dout<="00001000";
     
-    assign rom_m3_addr = {RAM_Dout[3:0], VCount[3:0], HCount[3:2]};
-    
+    assign rom_m3_addr = {RAM_Dout[3:0], VCount[3:0], HCountA[3:2]};
+
     ROM_M3 M3_ROM(
         .clock(Clk6),
         .address(rom_m3_addr),
         .q(M3_Dout)
     );
-    
-    assign rom_n3_addr = {RAM_Dout[3:0], VCount[3:0], HCount[3:2]};
+
+    assign rom_n3_addr = {RAM_Dout[3:0], VCount[3:0], HCountA[3:2]};
     
     ROM_N3 N3_ROM(
         .clock(Clk6),
@@ -175,7 +184,7 @@ module alpha_numerics(
     assign AlphaROM_Dout = (RAM_Dout[4] == 1'b0) ? M3_Dout : 
                            N3_Dout;
     
-    assign ShiftLoad = (HCount[0] & HCount[1]);
+    assign ShiftLoad = (HCountA[0] & HCountA[1]);
     
     // Real hardware 74LS95 uses falling edge of Clk6_n, this is the same as rising edge of Clk6
     
@@ -192,6 +201,6 @@ module alpha_numerics(
     // Alphanumeric data is shifted out on ShiftData(3)
     assign A_NVideo = (ShiftData[3] & H256_n & AN_Blank);
     
-    assign AN_Blank = (HBlank_n & (HCount[3] ^ HCount[4]));
+    assign AN_Blank = (HBlank_n & (HCountA[3] ^ HCountA[4]));
     
 endmodule
