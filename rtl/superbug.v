@@ -333,7 +333,10 @@ module superbug(
         .HBlank(HBlank),
         .VBlank(VBlank),
         .ArrowOff_n(ArrowOff_n),
-        .CarVideo(CarVideo),
+        // Collision detection sees both vehicles. Fire Truck's port reports
+        // the two channels ORed together at the offset the program reads, so
+        // one shared detector gives the same answer as the reference's two.
+        .CarVideo(CarOrTrailer),
         .PVP_Load_n(PVP_Load_n),
         .PHP_Load_n(PHP_Load_n),
         .Crash_n(Crash_n),
@@ -412,6 +415,9 @@ module superbug(
         .SkidReset_n(SkidReset_n),
         .ASR_n(ASR_n),
         .Attract(Attract),
+        .Game(Game),
+        .Horn_n(Horn_I),
+        .Bell(Bell),
         .Audio_O(Audio_O),
         .dbg_state(dbg_sound),
         .dbg_strobes(dbg_snd_strobes)

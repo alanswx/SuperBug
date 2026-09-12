@@ -45,6 +45,10 @@ module sound(
 
     input  wire        Attract,     // 1 in attract mode: motor and noise muted
 
+    input  wire [1:0]  Game,        // 0 = Super Bug, 1 = Fire Truck
+    input  wire        Horn_n,      // Fire Truck only, straight from the panel
+    input  wire        Bell,        // Fire Truck only, from the output latch
+
     output wire [15:0] Audio_O,
 
     // Sound registers are write-only to the CPU, so expose them for testing.
@@ -74,7 +78,11 @@ module sound(
     // ------------------------------------------------------------------
     // Sound registers
     // ------------------------------------------------------------------
+    localparam GAME_FIRETRK = 2'd1;
+    wire firetrk = (Game == GAME_FIRETRK);
+
     reg [3:0] speed_data;   // raw CPU value; EngineSound's table expects it this way
+    reg [3:0] siren_data;   // Fire Truck shares the motor register, high nibble
     reg [3:0] crash_level;  // inverted on the way in, so $F written means silent
     reg       skid_en;
     reg       asr_en;
@@ -87,8 +95,11 @@ module sound(
             asr_en      <= 1'b0;
         end else begin
             if (motor_wr) speed_data  <= BD[3:0];
+            if (motor_wr && firetrk) siren_data <= BD[7:4];
             if (crash_wr) crash_level <= ~BD[7:4];
-            if (asr_wr)   asr_en      <= |BD;
+            // Fire Truck's extended play tone is active low, Super Bug's is
+            // enabled by any non-zero value.
+            if (asr_wr)   asr_en      <= firetrk ? ~BD[0] : |BD;
             // Clear wins if both strobes land together.
             if (skid_clr)      skid_en <= 1'b0;
             else if (skid_set) skid_en <= 1'b1;
@@ -106,7 +117,8 @@ module sound(
     wire ce_2V = VCount[1] & ~prev_2V;
     always @(posedge Clk6) prev_2V <= VCount[1];
 
-    wire tone_square = VCount[3];          // 8V
+    wire tone_square = VCount[3];          // 8V, about 984 Hz
+    wire horn_square = VCount[6];          // 64V, about 123 Hz
 
     // Roughly 3 kHz, for the engine generator's ramp filter.
     reg [10:0] div_3k;
@@ -187,6 +199,57 @@ module sound(
     wire tone_out = asr_en & tone_square;
 
     // ------------------------------------------------------------------
+    // Fire Truck only, three channels Super Bug has no counterpart for.
+    //
+    // Horn is the 64V line gated by the panel button, and goes quiet in
+    // attract with everything else.
+    //
+    // Siren is a 556 oscillator whose control voltage comes from the four bit
+    // value sharing the motor register. The reference documents its two ends
+    // as 666 Hz at zero and 526 Hz at fifteen, which is what the period below
+    // interpolates between.
+    //
+    // Bell is the 8V line struck and left to decay: the enable instantly
+    // charges a capacitor which then bleeds away through a resistor, about a
+    // third of a second, and the tone is amplitude-shaped by what is left.
+    // ------------------------------------------------------------------
+    wire horn_out = firetrk & ~Horn_n & ~Attract & horn_square;
+
+    reg  [13:0] siren_count;
+    reg         siren_state;
+    wire [13:0] siren_half = 14'd4540 + {6'd0, siren_data} * 14'd80;
+    always @(posedge Clk6) begin
+        if (!Reset_n) begin
+            siren_count <= 14'd0;
+            siren_state <= 1'b0;
+        end else if (siren_count >= siren_half) begin
+            siren_count <= 14'd0;
+            siren_state <= ~siren_state;
+        end else begin
+            siren_count <= siren_count + 14'd1;
+        end
+    end
+    wire siren_out = firetrk & ~Attract & siren_state;
+
+    reg  [7:0]  bell_env;
+    reg  [12:0] bell_div;
+    reg         prev_bell;
+    always @(posedge Clk6) begin
+        prev_bell <= Bell;
+        if (!Reset_n) begin
+            bell_env <= 8'd0;
+            bell_div <= 13'd0;
+        end else if (Bell & ~prev_bell) begin
+            bell_env <= 8'hFF;          // the enable charges the capacitor at once
+            bell_div <= 13'd0;
+        end else begin
+            bell_div <= bell_div + 13'd1;
+            if (bell_div == 13'd0 && bell_env != 8'd0) bell_env <= bell_env - 8'd1;
+        end
+    end
+    wire [7:0] bell_8 = (firetrk && tone_square) ? bell_env : 8'd0;
+
+    // ------------------------------------------------------------------
     // Mixer.
     //
     // The board sums the four channels through R54 15k, R55 10.5456k,
@@ -204,8 +267,22 @@ module sound(
     wire [7:0] screech_8 = screech_out ? 8'd255 : 8'd0;
     wire [7:0] tone_8    = tone_out    ? 8'd128 : 8'd0;
 
-    wire [19:0] mix = (169 * motor_8) + (240 * bang_8)
-                    + ( 77 * screech_8) + (538 * tone_8);
+    // Fire Truck sums seven channels through its own set of resistors, and
+    // its extended play tone runs at full amplitude where Super Bug's is half.
+    // Scaled to a thousand and twenty-four the same way: tone 481, horn 103,
+    // bell 72, screech 68, bang 214, motor 71, siren 15.
+    wire [7:0] ft_tone_8  = tone_out  ? 8'd255 : 8'd0;
+    wire [7:0] ft_horn_8  = horn_out  ? 8'd255 : 8'd0;
+    wire [7:0] ft_siren_8 = siren_out ? 8'd255 : 8'd0;
+
+    wire [19:0] mix_sb = (169 * motor_8) + (240 * bang_8)
+                       + ( 77 * screech_8) + (538 * tone_8);
+
+    wire [19:0] mix_ft = (481 * ft_tone_8) + (103 * ft_horn_8) + (72 * bell_8)
+                       + ( 68 * screech_8) + (214 * bang_8) + (71 * motor_8)
+                       + ( 15 * ft_siren_8);
+
+    wire [19:0] mix = firetrk ? mix_ft : mix_sb;
 
     // Full scale is 1024 * 255 = 261120, so a shift of two lands just under
     // sixteen bits with no clipping.

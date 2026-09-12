@@ -158,11 +158,20 @@ boot-timing difference, not a rendering one.
   generator Super Bug has no counterpart for; and the wider input port with the
   second steering wheel and the coinage switches Super Bug leaves unused.
 
-  Still open for Fire Truck: the trailer's own collision channel, currently
-  shared with the truck's; the three extra sound channels, siren, horn and
-  bell; the extra panel controls, which are threaded through but tied inactive;
-  and the ROM loader, so both games ship from one bitstream rather than the
-  simulator reading files directly.
+  Collision detection now sees both vehicles. Fire Truck's port reports its two
+  channels ORed together at the offset the program reads, so one shared
+  detector gives the same answer as the reference's two.
+
+  Sound has all seven channels. Motor, crash, skid and extended play were
+  already shared with Super Bug once the addresses moved; siren, horn and bell
+  are new, as is the seven-way mixer and the inverted sense of Fire Truck's
+  extended play tone.
+
+  Still open for Fire Truck: the extra panel controls, which are threaded
+  through but tied inactive, so there is no way to press the bell, the horn,
+  the back player's start or the second wheel; and the ROM loader, so both
+  games ship from one bitstream rather than the simulator reading files
+  directly. The sound has not been compared against a recording.
 
 ---
 
