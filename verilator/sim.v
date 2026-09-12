@@ -81,6 +81,7 @@ module emu (
 	output	[8:0]	dbg_hcount,
 	output		dbg_pfwndo,
 	output		dbg_carena,
+	output	[4:0]	dbg_car_rot,
 	
 	input			service_mode,	// 1 = self-test (Test_I active-low low)
 	input			ioctl_download,
@@ -164,11 +165,17 @@ wire m_right    =  btn_right  | joy[0];
 wire m_gas      =  btn_gas    | joy[4];
 wire m_gearup   =  btn_gearup |joy[5];
 wire m_geardown =  btn_geardown | joy[6];
-wire m_next_track       =  joy[7]|btn_nexttrack;
+wire m_next_track	=  btn_nexttrack | joy[7];
 
-wire m_start1 = btn_one_player  | joy[7];
-wire m_start2 = btn_two_players | joy[8];
-wire m_coin   = m_start1 | m_start2;
+// The menu string above assigns joystick bits in order: 4 Gas, 5 GearUp,
+// 6 GearDown, 7 NextTrack, 8 Start 1P, 9 Start 2P, 10 Coin. Start used to read
+// bit 7, which is Next Track, so one button did both jobs and Start 2P read the
+// Start 1P button.
+wire m_start1 = btn_one_player  | joy[8];
+wire m_start2 = btn_two_players | joy[9];
+// Pressing start also drops a coin, which is this core's long-standing
+// convenience. The explicit coin button works on its own too.
+wire m_coin   = m_start1 | m_start2 | joy[10];
 
 
 
@@ -261,6 +268,7 @@ superbug superbug(
         .clk_6_O(clk_6),
         .DIP_Sw(DIP_Sw),
         .Slam_I(1'b1),
+        .HSRes_I(1'b1),   // active low; unconnected reads as a held reset
         .Trak_Sel_I(~m_next_track),
 
         .dbg_pc(dbg_pc),
@@ -273,7 +281,8 @@ superbug superbug(
         .dbg_cc(dbg_cc),
         .dbg_hcount(dbg_hcount),
         .dbg_pfwndo(dbg_pfwndo),
-        .dbg_carena(dbg_carena)
+        .dbg_carena(dbg_carena),
+        .dbg_car_rot(dbg_car_rot)
         );
 
 	wire clk_6;

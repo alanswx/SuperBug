@@ -25,7 +25,8 @@ module car(
     VCount,
     CarRot_n,
     CarVideo,
-    CarEna_dbg
+    CarEna_dbg,
+    CarRot_dbg
 );
     input        Clk6;
     input        Clk50;
@@ -37,6 +38,7 @@ module car(
     input        CarRot_n;
     output reg   CarVideo;
     output       CarEna_dbg;   // sprite window enable, for raster-position debugging
+    output [4:0] CarRot_dbg;   // latched rotation register, write-only to the CPU
     
     
     wire         H1;
@@ -195,6 +197,7 @@ module car(
     end
     assign CarEna_n = ~(M7Qa & M7Qb);
     assign CarEna_dbg = ~CarEna_n;
+    assign CarRot_dbg = {BD4_Sel, BD3_Sel, BD2_Sel, R1, R0};
     
     // L4 — car rotation register (CPU writes to \$0180).
     // Schematic uses rising edge of CarRot_n; Verilator's multi-edge

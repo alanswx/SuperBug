@@ -62,7 +62,8 @@ module superbug(
     dbg_cc,
     dbg_hcount,
     dbg_pfwndo,
-    dbg_carena
+    dbg_carena,
+    dbg_car_rot
 );
     output [15:0] dbg_pc;
     output [7:0]  dbg_opcode;
@@ -75,6 +76,7 @@ module superbug(
     output [8:0]  dbg_hcount;   // raw H counter, for raster-position debugging
     output        dbg_pfwndo;   // playfield window enable
     output        dbg_carena;   // car sprite window enable
+    output [4:0]  dbg_car_rot;  // latched car rotation register
     input        Clk_50_I;		// 50MHz input clock
     input        Reset_n;		// Reset button (Active low)
     output       Video1_O;		// Video output 1 (1k Ohm)
@@ -270,7 +272,8 @@ module superbug(
         .VCount(VCount),
         .CarRot_n(CarRot_n),
         .CarVideo(CarVideo),
-        .CarEna_dbg(dbg_carena)
+        .CarEna_dbg(dbg_carena),
+        .CarRot_dbg(dbg_car_rot)
     );
     
     // AJS put this back in (playfield)

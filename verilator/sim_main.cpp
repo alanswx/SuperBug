@@ -33,6 +33,7 @@
 #include <sstream>
 #include <fstream>
 #include <iterator>
+#include <sys/stat.h>
 #include <string>
 #include <iomanip>
 #include <vector>
@@ -144,6 +145,70 @@ std::string screenshot_dir;
 int stop_at_frame = -1;
 bool headless_mode = false;
 bool service_mode = false;  // --service: hold the self-test switch active
+
+// --input: a scripted button timeline, so gameplay can be exercised in batch
+// mode. Without it only attract mode is reachable and the car never leaves its
+// resting rotation, which makes the sprite path impossible to verify.
+//
+//   --input "60:coin, 90:start, 120-900:gas, 200-260:left, 400-460:right"
+//
+// A bare frame number presses the button for one frame; a range holds it.
+// Names match the joystick bits sim.v decodes.
+struct ScriptedPress { int from; int to; uint32_t mask; };
+std::vector<ScriptedPress> input_script;
+
+static uint32_t button_mask(const std::string& name) {
+	//                                        bit
+	if (name == "right")     return 1u << 0;
+	if (name == "left")      return 1u << 1;
+	if (name == "gas")       return 1u << 4;
+	if (name == "gearup")    return 1u << 5;
+	if (name == "geardown")  return 1u << 6;
+	if (name == "nexttrack") return 1u << 7;
+	if (name == "start")     return 1u << 8;
+	if (name == "start2")    return 1u << 9;
+	if (name == "coin")      return 1u << 10;
+	fprintf(stderr, "--input: unknown button '%s'\n", name.c_str());
+	return 0;
+}
+
+static void parse_input_script(const char* spec) {
+	std::string s(spec);
+	size_t pos = 0;
+	while (pos < s.size()) {
+		size_t comma = s.find(',', pos);
+		std::string item = s.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+		pos = (comma == std::string::npos) ? s.size() : comma + 1;
+		// strip spaces
+		std::string t;
+		for (char c : item) if (!isspace((unsigned char)c)) t += c;
+		if (t.empty()) continue;
+		size_t colon = t.find(':');
+		if (colon == std::string::npos) {
+			fprintf(stderr, "--input: expected FRAME:BUTTON in '%s'\n", t.c_str());
+			continue;
+		}
+		std::string when = t.substr(0, colon);
+		std::string what = t.substr(colon + 1);
+		int from, to;
+		size_t dash = when.find('-');
+		if (dash == std::string::npos) {
+			from = to = atoi(when.c_str());
+		} else {
+			from = atoi(when.substr(0, dash).c_str());
+			to   = atoi(when.substr(dash + 1).c_str());
+		}
+		uint32_t m = button_mask(what);
+		if (m) input_script.push_back({from, to, m});
+	}
+}
+
+static uint32_t scripted_buttons(int frame) {
+	uint32_t m = 0;
+	for (const auto& p : input_script)
+		if (frame >= p.from && frame <= p.to) m |= p.mask;
+	return m;
+}
 int dump_ram_at_frame = -1;
 // --raster-probe N: on frame N, report where the playfield window and the car
 // sprite window open and close, measured in visible-raster pixels so the
@@ -168,6 +233,7 @@ void save_screenshot(int frame_number) {
 	}
 	char filename[512];
 	if (!screenshot_dir.empty()) {
+		mkdir(screenshot_dir.c_str(), 0755);   // harmless if it already exists
 		snprintf(filename, sizeof(filename), "%s/v_frame_%04d.png",
 		         screenshot_dir.c_str(), frame_number);
 	} else if (!screenshot_name_override.empty()) {
@@ -356,7 +422,9 @@ int verilate() {
 				if (screenshot_mode) {
 					auto it = std::find(screenshot_frames.begin(), screenshot_frames.end(), video.completed_frame);
 					if (it != screenshot_frames.end()) {
-						save_screenshot(video.completed_frame);
+						fprintf(stderr, "[car_rot] frame=%d value=0x%02X\n",
+					        video.completed_frame, (unsigned)top->dbg_car_rot);
+					save_screenshot(video.completed_frame);
 						screenshot_frames.erase(it);
 					}
 				}
@@ -449,6 +517,8 @@ int main(int argc, char** argv, char** env) {
 		} else if (!strcmp(argv[i], "--raster-probe") && i + 1 < argc) {
 			raster_probe_frame = atoi(argv[++i]);
 			if (i + 1 < argc && argv[i + 1][0] != '-') rp_line = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "--input") && i + 1 < argc) {
+			parse_input_script(argv[++i]);
 		} else if (!strcmp(argv[i], "--service")) {
 			service_mode = true;
 		} else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
@@ -456,6 +526,8 @@ int main(int argc, char** argv, char** env) {
 			       "  --screenshot <frames>     comma-separated frame numbers\n"
 			       "  --screenshot-name <path>  override output path (single shot)\n"
 			       "  --screenshot-dir <dir>    one PNG per frame into <dir>\n"
+			       "  --input <script>          scripted buttons, e.g.\n"
+			       "                            \"60:coin, 90:start, 120-900:gas\"\n"
 			       "  --stop-at-frame <n>       exit after frame n\n"
 			       "  --service                 hold self-test switch active (matches MAME selftest.avi)\n"
 			       "  --headless                hint for batch mode (still opens window)\n");
@@ -573,6 +645,8 @@ int main(int argc, char** argv, char** env) {
 		while (true) {
 			for (int step = 0; step < batchSize; step++) {
 				top->service_mode = service_mode ? 1 : 0;
+				top->joystick_0 = scripted_buttons(video.count_frame);
+				top->joystick_1 = top->joystick_0;
 				verilate();
 			}
 		}
@@ -736,6 +810,7 @@ fprintf(stderr,"filePath: %s\n",filePath.c_str());
 		{
 			if (input.inputs[i]) { top->joystick_0 |= (1 << i); }
 		}
+		top->joystick_0 |= scripted_buttons(video.count_frame);
 		top->joystick_1 = top->joystick_0;
 		top->service_mode = service_mode ? 1 : 0;
 
