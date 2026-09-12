@@ -336,7 +336,8 @@ module superbug(
         .SkidIn_n(SkidIn_n),
         .CrashIn_n(CrashIn_n),
         .Adr(CPU_Adr[2:0]),
-        .DBus(CPU_Din)
+        .DBus(CPU_Din),
+        .Clk6(Clk6)
     );
     
     sound Sound(

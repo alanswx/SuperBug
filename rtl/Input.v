@@ -34,7 +34,8 @@ module Input(
     SkidIn_n,
     CrashIn_n,
     Adr,
-    DBus
+    DBus,
+    Clk6
 );
     input [7:0]  DIP_Sw;		// DIP switches
     input        Coin1_n;		// Coin switches
@@ -57,6 +58,7 @@ module Input(
     input        CrashIn_n;
     input [2:0]  Adr;		// Adress bus, only the lower 3 bits used by IO circuitry
     output [7:0] DBus;		// Out to data bus, only bits 7, 1, and 0 are actually used
+    input        Clk6;
     
     
     wire         Coin1;
@@ -74,18 +76,31 @@ module Input(
     assign Coin2 = ((~Coin2_n));
     assign Steering1A = (~Steering1A_n);
     
-    // Steering inputs, handled by 7474's at H10 and J10 
-    
-    // 7474 D-FF: D tied high, clocked by Steering1B_n rising edge,
-    // async clear by SteerReset_n. SteerDir samples Steering1A on each clock.
-    always @(posedge Steering1B_n or negedge SteerReset_n)
+    // Steering inputs, handled by 7474's at H10 and J10.
+    //
+    // The schematic clocks these on the rising edge of Steering1B_n with
+    // SteerReset_n as an async clear. Written literally, that is an always
+    // block sensitive to two edges of two combinational signals, which the
+    // simulator can fire at moments that have nothing to do with the wheel:
+    // the flag would set on its own, the program would read continuous
+    // steering, and the car span on the spot with no input at all. The same
+    // mistake was already corrected in car.v and playfield.v; this was the
+    // last one left.
+    //
+    // Rebuilt as an edge detector in the Clk6 domain. The reset strobe is a
+    // whole CPU cycle wide, so sampling it on Clk6 cannot miss it.
+    reg prev_Steering1B_n;
+    always @(posedge Clk6)
     begin: SteeringA
+        prev_Steering1B_n <= Steering1B_n;
+        // Only the flag flip-flop has the async clear. The direction one just
+        // samples, which is what the reference does too: its steer_reset_w
+        // sets the flag and leaves the direction alone.
         if (SteerReset_n == 1'b0)
         begin
             SteerFlag <= 1'b0;
-            SteerDir  <= 1'b0;
         end
-        else
+        else if (Steering1B_n & ~prev_Steering1B_n)
         begin
             SteerFlag <= 1'b1;
             SteerDir  <= Steering1A;
@@ -139,7 +154,13 @@ module Input(
             3'b001 :
                 InputMux2 = (~Gas_n);
             3'b010 :
-                InputMux2 = (~SteerDir);
+                // Not inverted. With the inversion this read 1 while the wheel
+                // sat still, where the reference reads 0, so the program saw a
+                // steering command on every pass and the car span on the spot
+                // with no input at all. Reading it straight gives 0 at rest,
+                // 1 turning left and 0 turning right, which is what the
+                // reference reports.
+                InputMux2 = SteerDir;
             3'b011 :
                 InputMux2 = (~HScoreRes_n);
             3'b100 :

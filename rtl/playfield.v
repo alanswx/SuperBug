@@ -271,6 +271,31 @@ module playfield(
     assign Crash_n = (~(CrashCode & PfCarVid));
     assign PfCarVid = (Pfld & CarVideo);
     assign Skid_n = (~(PfCarVid & (~(CrashCode | SkidCode_n))));
+
+    // B7, a 74LS109 pair holding the collision results until the program
+    // clears them. These were commented out in the VHDL this port came from
+    // and were never written here either, so both outputs were undriven: the
+    // program read a permanent crash and a permanent skid, span the car on the
+    // spot with no input, and left the tyre screech sounding for ever.
+    //
+    // The LS109 is a J-K-bar part, so the K pin on the schematic is the
+    // inverted one: with J tied low the flip-flop clears when the collision
+    // term asserts, and the reset line is the asynchronous preset the program
+    // pulses to arm it again. That is also what the reference does, where a
+    // collision sets the flag and crash_reset_w and skid_reset_w clear it.
+    //
+    // Active low, so 1 means no collision. They power up armed.
+    reg CrashIn_n_r = 1'b1;
+    reg SkidIn_n_r  = 1'b1;
+    always @(posedge Clk6) begin: CollisionLatches
+        if (CrashReset_n == 1'b0)   CrashIn_n_r <= 1'b1;
+        else if (Crash_n == 1'b0)   CrashIn_n_r <= 1'b0;
+
+        if (SkidReset_n == 1'b0)    SkidIn_n_r <= 1'b1;
+        else if (Skid_n == 1'b0)    SkidIn_n_r <= 1'b0;
+    end
+    assign CrashIn_n = CrashIn_n_r;
+    assign SkidIn_n  = SkidIn_n_r;
     
 `ifdef SIMULATION
     // Sim-only: count writes that actually fire so we can tell from the
