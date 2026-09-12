@@ -174,8 +174,26 @@ boot-timing difference, not a rendering one.
   Still open for Fire Truck: the ROM loader, so both games ship from one
   bitstream rather than the simulator reading files directly; the cabinet type
   switch, fixed at the two-player Fire Truck cabinet rather than Smokey Joe;
-  and the diagnostic buttons. The sound has not been compared against a
-  recording.
+  and the diagnostic buttons.
+
+  Sound is now compared against recordings of the reference, which can write a
+  WAV of a session. tools/wavcompare.py scores two recordings by how the energy
+  spreads across twenty frequency bands, lined up at their own peaks so overall
+  loudness does not dominate; two runs never match sample for sample, so
+  comparing waveforms is useless.
+
+  That found a real fault in the harness: audio was captured and played at half
+  the correct rate, so everything came out an octave high and half as long. The
+  divisor was taken from a clock twice the design's.
+
+  With that fixed, Super Bug scores 9.8 dB mean difference per band. Sweeping
+  the engine generator's tuning constant confirmed the default is the best of
+  five values tried, the others scoring 14 to 16, so the remainder is the gap
+  between a port of the Sprint 2 approximation and the 556 oscillator the board
+  uses. Fire Truck scores 13 to 21 depending on the window, with its loudest
+  band in the right place; it carries more high frequency energy than the
+  reference, which is worth chasing but needs the two runs in closer lockstep
+  to judge fairly.
 
 ---
 

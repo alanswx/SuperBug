@@ -150,6 +150,12 @@ module sound(
     // divider; it expects the raw CPU value, where zero is the lowest pitch.
     // ------------------------------------------------------------------
     wire [5:0] motor_level;
+    // The tuning constant was swept against a recording of the reference,
+    // scoring each by how closely the spread of energy across frequency bands
+    // matched. The default is the best of those tried: 9.8 dB mean difference
+    // per band, against 14 to 16 for every alternative. What remains is the
+    // gap between this generator, which is a port of the Sprint 2
+    // approximation, and the 556 oscillator the board actually uses.
     EngineSound engine(
         .Clk_6(Clk6),
         .Ena_3k(ce_3k),

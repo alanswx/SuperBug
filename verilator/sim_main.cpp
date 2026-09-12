@@ -112,7 +112,11 @@ double sc_time_stamp() {	// Called by $time in Verilog.
 	return main_time;
 }
 
-int clk_sys_freq = 24000000;
+// The design's clock is 12.096 MHz and the harness advances it one full cycle
+// per step, so this is what the audio decimation has to divide down from.
+// It was 24 MHz, which produced half as many samples as a second of emulated
+// time needs: captured audio came out an octave high and half as long.
+int clk_sys_freq = 12000000;
 SimClock clk_sys(1);
 
 int soft_reset=0;
