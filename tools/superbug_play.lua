@@ -7,6 +7,10 @@
 --     -seconds_to_run 30 -autoboot_script ../tools/superbug_play.lua superbug
 
 local out_dir = os.getenv("SBPLAY_OUT") or "/tmp/superbug_play"
+local snaps = {}
+for tok in string.gmatch(os.getenv("SBPLAY_SNAPS") or "", "[^,]+") do
+    snaps[tonumber(tok)] = true
+end
 local until_frame = tonumber(os.getenv("SBPLAY_UNTIL") or "1200")
 os.execute("mkdir -p " .. out_dir)
 
@@ -50,6 +54,13 @@ emu.register_frame_done(function()
     if gas   then gas:set_value((f >= 220) and 1 or 0) end
     if gear1 then gear1:set_value((f >= 200) and 1 or 0) end
 
+    if f >= 250 and f <= 400 and f % 10 == 0 then
+        local cr = manager.machine.memory.shares[":car_rot"] or manager.machine.memory.shares["car_rot"]
+        io.stderr:write(string.format("[car_rot] frame=%d value=0x%02X\n", f, cr and cr:read_u8(0) or 0))
+    end
+    if snaps[f] then
+        manager.machine.screens[":screen"]:snapshot(string.format("%s/f%04d.png", out_dir, f))
+    end
     if f % 200 == 0 then
         io.stderr:write(string.format("[sbplay] frame=%d motor writes=%d last=0x%02X\n",
             f, n_motor, last_motor & 0xff))

@@ -139,7 +139,23 @@ module playfield(
     
     assign RnW = ((~RW_n));
     
-    assign PFROM_Adr = {PD[3:0], PVP[3:0], PHP[3:2]};
+    // There are two Clk6 of fetch pipeline between the horizontal position
+    // counter and the displayed pixel: the cell code leaves the playfield RAM
+    // one cycle after it is addressed, and the pixel nibble leaves the shape
+    // ROM one cycle after that. Address the fetch two pixels ahead so what
+    // arrives belongs to the pixel being drawn.
+    //
+    // The nibble index also has to be held back a cycle to pair with the cell
+    // code, which is already a cycle old. Mixing a stale code with a fresh
+    // nibble index is what put the previous tile's pixels into the first
+    // nibble of every cell: four stray pixels at every cell boundary, which
+    // measured as every mismatch against the reference landing in one
+    // quarter of each sixteen-pixel cell.
+    wire [7:0] PHP_fetch = PHP + 8'd2;
+    reg  [1:0] PHP_nibble_d;
+    always @(posedge Clk6) PHP_nibble_d <= PHP_fetch[3:2];
+
+    assign PFROM_Adr = {PD[3:0], PVP[3:0], PHP_nibble_d};
     
     // Playfield ROM
     
@@ -242,7 +258,7 @@ module playfield(
     // updates per-frame become vertical motion in the rotated view —
     // which is what "moving forward along the road" looks like in the
     // vertical-cabinet orientation.
-    assign PF_RAM_Adr = PfldRAM ? BA[7:0] : {PVP[7:4], PHP[7:4]};
+    assign PF_RAM_Adr = PfldRAM ? BA[7:0] : {PVP[7:4], PHP_fetch[7:4]};
     
     // Check data bus paths carefully
     assign PFRAM_Din = (BD_en == 1'b0) ? BD : 
@@ -330,7 +346,7 @@ module playfield(
             PHP_load_value <= BD;
 
         if (prev_VBlank_php & ~VBlank)
-            PHP <= PHP_load_value + 8'd3;
+            PHP <= PHP_load_value - 8'd1;
         else if (H256 & ~VBlank)
             PHP <= PHP + 1;
     end
@@ -464,9 +480,16 @@ module playfield(
     // exactly the RAM read latency (~1 pixel). This still doesn't
     // match a tilemap renderer's perfect cell-aligned colors, but it
     // drops the visible boundary leak from 4 pixels to ~1.
-    assign PCC1       = PD[6];
-    assign PCC2       = PD[7];
-    assign CrashCode  = PD[4];
-    assign SkidCode_n = PD[3];
+    // The palette bits belong to the pixel on screen, not to the cell being
+    // fetched. With the fetch running two pixels ahead, PD is already one
+    // cycle old and the shift register output is one cycle behind that, so
+    // hold PD one more cycle here to line the colour up with the pixel.
+    reg [7:0] PD_display;
+    always @(posedge Clk6) PD_display <= PD;
+
+    assign PCC1       = PD_display[6];
+    assign PCC2       = PD_display[7];
+    assign CrashCode  = PD_display[4];
+    assign SkidCode_n = PD_display[3];
     
 endmodule

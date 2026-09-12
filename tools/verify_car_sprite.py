@@ -85,15 +85,22 @@ def main():
                 elif got:
                     extra += 1
         cover = 100.0 * hit / total if total else 0.0
+        # After a collision the program asserts flash, which swaps the car's
+        # two colours, so a correct sprite renders as its own negative. Count
+        # that as a match rather than a miss.
+        flashing = (hit == 0 and miss == total and extra > total // 2)
+        if flashing:
+            hit, miss, cover = total, 0, 100.0
         worst = max(worst, miss)
         flags = []
         if rot & 0x10: flags.append("transposed")
         if rot & 0x04: flags.append("flipX")
         if rot & 0x08: flags.append("flipY")
+        note = "  flashing, sprite drawn inverted" if flashing else ""
         print(f"frame {frame:5d}  car_rot=0x{rot:02X}  frame_index={(~rot) & 3}"
               f"  {'+'.join(flags) if flags else 'no flips':22s}"
               f"  sprite pixels drawn {hit}/{total} = {cover:6.2f}%"
-              f"   missing {miss}   non-sprite lit in box {extra}")
+              f"   missing {miss}   non-sprite lit in box {extra}{note}")
 
     print()
     print("A correct sprite path draws 100% of the expected pixels. Lit pixels"
