@@ -192,6 +192,9 @@ std::string screenshot_dir;
 int stop_at_frame = -1;
 bool headless_mode = false;
 bool service_mode = false;  // --service: hold the self-test switch active
+// --game N: 0 = Super Bug, 1 = Fire Truck. On hardware this comes from the
+// MRA; the harness has no MRA so it is a command line option.
+int game_select = 0;
 
 // --input: a scripted button timeline, so gameplay can be exercised in batch
 // mode. Without it only attract mode is reachable and the car never leaves its
@@ -674,6 +677,8 @@ int main(int argc, char** argv, char** env) {
 			watch_to   = atoi(argv[++i]);
 		} else if (!strcmp(argv[i], "--switch-pc-trace")) {
 			switch_pc_trace = true;
+		} else if (!strcmp(argv[i], "--game") && i + 1 < argc) {
+			game_select = atoi(argv[++i]);
 		} else if (!strcmp(argv[i], "--service")) {
 			service_mode = true;
 		} else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
@@ -800,6 +805,7 @@ int main(int argc, char** argv, char** env) {
 		top->joystick_0 = 0;
 		top->joystick_1 = 0;
 		top->service_mode = service_mode ? 1 : 0;
+		top->game_select = game_select;
 		while (true) {
 			for (int step = 0; step < batchSize; step++) {
 				top->service_mode = service_mode ? 1 : 0;
@@ -968,6 +974,7 @@ fprintf(stderr,"filePath: %s\n",filePath.c_str());
 		{
 			if (input.inputs[i]) { top->joystick_0 |= (1 << i); }
 		}
+		top->game_select = game_select;
 		top->joystick_0 |= scripted_buttons(video.count_frame);
 		top->joystick_1 = top->joystick_0;
 		top->service_mode = service_mode ? 1 : 0;

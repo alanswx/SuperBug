@@ -6,6 +6,10 @@
     <manufacturer>Atari (Kee Games)</manufacturer>
     <category>Driving</category>
 
+    <!-- Game select. The core reads this as a one byte download at index 1:
+         0 is Super Bug, 1 is Fire Truck. -->
+    <rom index="1"><part>00</part></rom>
+
     <rom index="0" zip="superbug.zip" md5="none">
         <!-- Program, $0800-$1FFF -->
         <part name="009121.d1"/>

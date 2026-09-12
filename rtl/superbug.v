@@ -49,6 +49,7 @@ module superbug(
     Clk12,
     clk_6_O,
     DIP_Sw,
+    Game,
     dn_addr,
     dn_data,
     dn_wr,
@@ -114,6 +115,7 @@ module superbug(
     input        Clk12;
     output       clk_6_O;
     input [7:0]  DIP_Sw;
+    input [1:0]  Game;		// 0 = Super Bug, 1 = Fire Truck
     // signals that carry the ROM data from the MiSTer disk
     input [16:0] dn_addr;
     input [7:0]  dn_data;
@@ -137,6 +139,7 @@ module superbug(
     wire         PCC2;
     wire         PFWndo;
     wire         Flash;
+    wire         Bell;
     wire         Pfld;
     wire         CarVideo;
     wire         A_NVideo;
@@ -210,6 +213,8 @@ module superbug(
         .TrakSelLamp(Lamp2_O),
         .Attract(Attract),
         .Flash(Flash),
+        .Bell(Bell),
+        .Game(Game),
         .In1_n(In1_n),
         .Opt_n(Opt_n),
         .PHP_Load_n(PHP_Load_n),

@@ -461,6 +461,14 @@ end superbug;
 	end
 	wire [7:0] DIP_Sw = sw[0];
 
+	// Which game this MRA is for. The MiSTer main sends it as a one byte
+	// download at index 1, which is how a multi-game core picks its variant.
+	// 0 is Super Bug, 1 is Fire Truck.
+	reg [7:0] mod_game = 8'd0;
+	always @(posedge clk_sys) begin
+		if (ioctl_wr && ioctl_index == 16'd1) mod_game <= ioctl_data;
+	end
+
 superbug superbug(
 	.Clk_50_I(CLK_50M),
 	.Clk12(clk_12),
@@ -495,6 +503,7 @@ superbug superbug(
 	.vblank_O(vblank),
 	.clk_6_O(clk_6),
 	.DIP_Sw(DIP_Sw),
+	.Game(mod_game[1:0]),
 	.Slam_I(1'b1),
 	// Active low, and it was left unconnected before, which synthesises to a
 	// permanently asserted high-score reset.

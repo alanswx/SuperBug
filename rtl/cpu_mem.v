@@ -27,6 +27,7 @@ module cpu_mem(
     TrakSelLamp,
     Attract,
     Flash,
+    Bell,
     In1_n,
     Opt_n,
     PHP_Load_n,
@@ -40,6 +41,7 @@ module cpu_mem(
     CrashSnd_n,
     SkidSnd_n,
     ASR_n,
+    Game,
     Adr,
     DBus_in,
     DBus_out,
@@ -73,6 +75,7 @@ module cpu_mem(
     output reg    TrakSelLamp;
     output reg    Attract;
     output reg    Flash;
+    output reg    Bell;        // Fire Truck only; Super Bug has no bell
     output        In1_n;
     output        Opt_n;
     output        PHP_Load_n;
@@ -86,6 +89,7 @@ module cpu_mem(
     output        CrashSnd_n;
     output        SkidSnd_n;
     output        ASR_n;       // extended-play tone strobe ($0220)
+    input [1:0]   Game;        // 0 = Super Bug, 1 = Fire Truck
     output [15:0] Adr;
     input [7:0]   DBus_in;
     output [7:0]  DBus_out;
@@ -334,10 +338,27 @@ module cpu_mem(
     //ROM3ce_n <= '0' when VMA = '1' and Adr(12 downto 10) = "111" else '1';
     
     assign BVMA = VMA;		// and (not Adr(14));
+
+    // Fire Truck is the next revision of this board and decodes sixteen
+    // kilobytes where Super Bug decodes eight. Nothing sits at the same
+    // address; docs/firetruck_port.md has the two maps side by side. The
+    // select is a runtime input so one bitstream can carry both games.
+    localparam GAME_SUPERBUG = 2'd0;
+    localparam GAME_FIRETRK  = 2'd1;
+    wire firetrk = (Game == GAME_FIRETRK);
+
+    // Super Bug puts its whole input and control page below $0800; Fire Truck
+    // puts its registers at $1000 and $1400 and its ports at $1800 and $1C00.
     assign BA12nor11 = ~(Adr[12] | Adr[11]);
-    assign SysEn = (BVMA & BA12nor11 & PHI2);
-    assign RAMce = (Adr[11:8] == 4'b0000) ? 1'b1 : 
-                   1'b0;
+    assign SysEn = firetrk ? (BVMA & ~Adr[13] & PHI2)
+                           : (BVMA & BA12nor11 & PHI2);
+
+    // Scratchpad. On Super Bug this is a page of its own at $0000. On Fire
+    // Truck the processor's direct page and stack live in the alphanumeric
+    // RAM, whose first thirty-two bytes are what gets displayed, so the same
+    // page answers both.
+    assign RAMce = firetrk ? (BVMA & Adr[13:11] == 3'b000)
+                           : (Adr[11:8] == 4'b0000);
     //RAMce <= '1' when SysEn = '1' and Adr(11 downto 8) = "0000" else '0';
     //RAMwe <= '1' when RAMce = '1' and RW_n = '0' else '0';  -- AJS
     assign RAMwe = (RAMce == 1'b1 & RW_n == 1'b0) ? 1'b1 : 
@@ -374,13 +395,20 @@ module cpu_mem(
     //		 011
     // 000 111 1111111111
     
+    // Register group selects. Fire Truck splits its registers across two
+    // pages: $1000 holds the scroll, reset and rotation strobes, $1400 the
+    // sound, trailer, output latch and extended play. Super Bug has one group
+    // below $0200 and another at $0200. In both, the low three address bits
+    // above bit 4 pick which register within the group.
+    wire grp_lo = firetrk ? (Adr[13:10] == 4'b0100)   // Fire Truck $1000
+                          : (Adr[10] == 1'b0 & Adr[8] == 1'b1);
+    wire grp_hi = firetrk ? (Adr[13:10] == 4'b0101)   // Fire Truck $1400
+                          : (Adr[9] == 1'b1);
+
     // Outputs
-    assign MotorSnd_n = (IO_Wr == 1'b1 & Adr[9] == 1'b1 & Adr[7:5] == 3'b100) ? 1'b0 : 
-                        1'b1;
-    assign CrashSnd_n = (IO_Wr == 1'b1 & Adr[9] == 1'b1 & Adr[7:5] == 3'b101) ? 1'b0 : 
-                        1'b1;
-    assign SkidSnd_n = (IO_Wr == 1'b1 & Adr[9] == 1'b1 & Adr[7:5] == 3'b110) ? 1'b0 : 
-                       1'b1;
+    assign MotorSnd_n = (IO_Wr & grp_hi & Adr[7:5] == (firetrk ? 3'b000 : 3'b100)) ? 1'b0 : 1'b1;
+    assign CrashSnd_n = (IO_Wr & grp_hi & Adr[7:5] == (firetrk ? 3'b001 : 3'b101)) ? 1'b0 : 1'b1;
+    assign SkidSnd_n = (IO_Wr & grp_hi & Adr[7:5] == (firetrk ? 3'b010 : 3'b110)) ? 1'b0 : 1'b1;
     
     // Per MAME's superbug memory map (firetrk.cpp:998 — `scroll_y` at $0100,
     // `scroll_x` at $0120) the CPU writes vertical scroll to $0100 and
@@ -390,10 +418,8 @@ module cpu_mem(
     // sent scroll_y into the H counter — visible at boot as a missing
     // left-half playfield (the H scroll was effectively scroll_y, putting
     // the populated tilemap rows out of the visible window's H span).
-    assign PVP_Load_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b000) ? 1'b0 :
-                        1'b1;
-    assign PHP_Load_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b001) ? 1'b0 :
-                        1'b1;
+    assign PVP_Load_n = (IO_Wr & grp_lo & Adr[7:5] == 3'b000) ? 1'b0 : 1'b1;
+    assign PHP_Load_n = (IO_Wr & grp_lo & Adr[7:5] == 3'b001) ? 1'b0 : 1'b1;
 
     // Debug-only: latch the most recent scroll_x / scroll_y the CPU
     // wrote so the harness can compare directly with MAME's stored
@@ -417,44 +443,54 @@ module cpu_mem(
         if (PHP_Load_n_prev && ~PHP_Load_n) scroll_x_writes <= scroll_x_writes + 1;
         if (PVP_Load_n_prev && ~PVP_Load_n) scroll_y_writes <= scroll_y_writes + 1;
     end
-    assign CrashReset_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b010) ? 1'b0 : 
-                          1'b1;
-    assign SkidReset_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b011) ? 1'b0 : 
-                         1'b1;
-    assign CarRot_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b100) ? 1'b0 : 
-                      1'b1;
-    assign SteerReset_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b101) ? 1'b0 : 
-                          1'b1;
-    assign WdogReset_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b110) ? 1'b0 : 
-                         1'b1;
-    assign ArrowOff_n = (IO_Wr == 1'b1 & Adr[10] == 1'b0 & Adr[8] == 1'b1 & Adr[7:5] == 3'b111) ? 1'b0 : 
-                        1'b1;
+    assign CrashReset_n = (IO_Wr & grp_lo & Adr[7:5] == 3'b010) ? 1'b0 : 1'b1;
+    assign SkidReset_n = (IO_Wr & grp_lo & Adr[7:5] == 3'b011) ? 1'b0 : 1'b1;
+    assign CarRot_n = (IO_Wr & grp_lo & Adr[7:5] == 3'b100) ? 1'b0 : 1'b1;
+    assign SteerReset_n = (IO_Wr & grp_lo & Adr[7:5] == 3'b101) ? 1'b0 : 1'b1;
+    assign WdogReset_n = (IO_Wr & grp_lo & Adr[7:5] == 3'b110) ? 1'b0 : 1'b1;
+    assign ArrowOff_n = (IO_Wr & grp_lo & Adr[7:5] == 3'b111) ? 1'b0 : 1'b1;
     
     // Note: SysEn is gated by PHI2 in the original, which is correct for
     // write-strobe generation but causes a one-event-cycle race in Verilator
     // when the CPU samples data_in on negedge PHI2 (mux returns FF before
     // the CPU latches the I/O byte). Use BVMA & BA12nor11 (= SysEn ungated)
     // for the read-side decoders. Writes still use SysEn for IO_Wr.
-    wire SysEn_rd = BVMA & BA12nor11;
-    assign In1_n = (SysEn_rd == 1'b1 & Adr[9] == 1'b1 & Adr[7:5] == 3'b000) ? 1'b0 :
-                   1'b1;
-    assign Opt_n = (SysEn_rd == 1'b1 & Adr[9] == 1'b1 & Adr[7:5] == 3'b010) ? 1'b0 :
-                   1'b1;
-    assign Out2_n = (SysEn == 1'b1 & Adr[9] == 1'b1 & Adr[7:5] == 3'b011) ? 1'b0 : 
-                    1'b1;
+    wire SysEn_rd = firetrk ? (BVMA & ~Adr[13]) : (BVMA & BA12nor11);
+    wire grp_hi_rd = firetrk ? (Adr[13:10] == 4'b0101) : (Adr[9] == 1'b1);
+
+    // Ports and DIP switches. Fire Truck gives each its own page, $1800 and
+    // $1C00; Super Bug selects between them inside the $0200 group.
+    assign In1_n = firetrk ? ((SysEn_rd & Adr[13:10] == 4'b0110) ? 1'b0 : 1'b1)
+                           : ((SysEn_rd & Adr[9] & Adr[7:5] == 3'b000) ? 1'b0 : 1'b1);
+    assign Opt_n = firetrk ? ((SysEn_rd & Adr[13:10] == 4'b0111) ? 1'b0 : 1'b1)
+                           : ((SysEn_rd & Adr[9] & Adr[7:5] == 3'b010) ? 1'b0 : 1'b1);
+
+    // Output latch. Super Bug encodes the value in the address at $026X; Fire
+    // Truck writes it as data to $14C0, so the latch below has two forms.
+    assign Out2_n = firetrk ? ((SysEn & grp_hi_rd & Adr[7:5] == 3'b110) ? 1'b0 : 1'b1)
+                            : ((SysEn & Adr[9] & Adr[7:5] == 3'b011) ? 1'b0 : 1'b1);
     // ASR — the extended-play tone strobe at $0220 (MAME: xtndply_w). This
     // had no decode at all, so the tone could never be triggered.
-    assign ASR_n = (IO_Wr == 1'b1 & Adr[9] == 1'b1 & Adr[7:5] == 3'b001) ? 1'b0 :
-                   1'b1;
+    assign ASR_n = (IO_Wr & grp_hi & Adr[7:5] == (firetrk ? 3'b111 : 3'b001)) ? 1'b0 : 1'b1;
     
     
+    // Super Bug takes the latch value from the address lines, Fire Truck from
+    // the data bus, and the bit order differs: Fire Truck puts attract on
+    // bit 4 and adds a bell output on bit 7.
     always @(posedge Out2_n)
     begin: OutputLatch
-        begin
-            StartLamp <= Adr[0];
+        if (firetrk) begin
+            StartLamp   <= CPU_Dout[0];
+            TrakSelLamp <= CPU_Dout[3];
+            Flash       <= CPU_Dout[2];
+            Attract     <= CPU_Dout[4];
+            Bell        <= CPU_Dout[7];
+        end else begin
+            StartLamp   <= Adr[0];
             TrakSelLamp <= Adr[3];
-            Attract <= Adr[1];
-            Flash <= Adr[2];
+            Attract     <= Adr[1];
+            Flash       <= Adr[2];
+            Bell        <= 1'b0;
         end
     end
     
