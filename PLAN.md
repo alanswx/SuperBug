@@ -57,6 +57,30 @@ scratchpad differences that remain during attract are transient values sampled
 at different points in the program, not a divergence: the stable game state
 matches.
 
+**Processor fixes**
+
+Two faults in the processor path, both found by chasing a crash that looked
+wrong on screen.
+
+- The wait-for-interrupt state cleared the interrupt mask every cycle while
+  waiting, carried over from the VHDL where it is commented "enable
+  interrupts". An MC6800 leaves the mask alone. This game sets the mask and
+  paces its main loop on that instruction, so with the mask cleared the
+  periodic interrupt woke the loop as well and every piece of game logic ran
+  seven times a frame. The car reached full speed within two frames of the
+  throttle, drove off the road, and the fuel drained six times too fast.
+- The processor clock was a third slow, 756 kHz against the board's 1.008 MHz.
+  756 kHz is the rate the service switch selects. Being short of cycles per
+  frame let the program drift away from the reference over a few hundred
+  frames.
+
+With both fixed the main loop runs once per frame, the forward scroll tracks
+the reference to within a few units over a thousand frames, and the playfield
+RAM matches byte for byte at most checked frames.
+
+Rendering during gameplay is correct: a captured gameplay frame matches the
+reference to 0.16% once the small forward-position offset is taken out.
+
 **Known cosmetic difference**
 
 For the first four frames after power-on the top text row shows the character
