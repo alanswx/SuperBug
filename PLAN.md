@@ -136,7 +136,26 @@ boot-timing difference, not a rendering one.
 - Phase 2 needs tuning against a reference recording. The screech oscillator
   currently runs near 1825 Hz where the original is nearer 1200 Hz, and the
   engine has not been compared against a recording at all.
-- Phase 3 has not been started.
+- Phase 3 started. See docs/firetruck_port.md for the full specification of
+  what differs, taken from the reference driver and cross-checked against the
+  original program source in this tree.
+
+  Done: the game select, threaded as a runtime input so one bitstream carries
+  both games and taken from the MRA as a one byte download at index 1; the
+  whole memory decode parameterised for both maps; the two forms of the output
+  latch; and releases/Fire Truck.mra.
+
+  Blocked on ROMs: the Fire Truck set is not in this tree, so neither the
+  reference nor the simulator can run the game and none of the Fire Truck paths
+  can be checked against anything. Eleven files are needed; the twelfth, the
+  sync PROM, is already here because both games use the same part.
+
+  Next, in order, once the ROMs are present: the ROM loader, which both games
+  need and which can be proved on Super Bug first; the alphanumeric RAM sharing
+  the processor's direct page; the graphics ROM organisation and bit orders
+  selected by game; the trailer sprite and its collision channel; the wider
+  input port and the coinage DIP bits Super Bug does not use; and the three
+  extra sound channels.
 
 ---
 

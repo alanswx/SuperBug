@@ -11,10 +11,11 @@
     <rom index="1"><part>01</part></rom>
 
     <rom index="0" zip="firetrk.zip" md5="none">
-        <!-- Program, $2000-$3FFF. The two nibble-wide PROM pairs at K and J
-             interleave into the top half. -->
-        <part name="032826-01.c1"/>
-        <part name="032825-01.d1"/>
+        <!-- Program, $2000-$3FFF. The lower half is two byte-wide ROMs; the
+             upper half is two pairs of nibble-wide PROMs, high nibble first,
+             which the core's loader recombines. -->
+        <part name="032823-02.c1"/>
+        <part name="032824-01.d1"/>
         <part name="032816-01.k1"/>
         <part name="032820-01.k2"/>
         <part name="032815-01.j1"/>
