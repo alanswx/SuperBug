@@ -345,6 +345,27 @@ static void parse_screenshot_frames(const char* arg) {
 	}
 }
 
+static void print_controls() {
+	fprintf(stderr,
+	  "\n"
+	  "Super Bug controls\n"
+	  "                        key        alternate\n"
+	  "  Steer left            Left       \n"
+	  "  Steer right           Right      \n"
+	  "  Gas                   A          Left Ctrl\n"
+	  "  Gear up               B          Left Alt\n"
+	  "  Gear down             X          Space\n"
+	  "  Track select          Y          Left Shift\n"
+	  "  Start 1 player        L          F1, or 1\n"
+	  "  Start 2 player        E          F2\n"
+	  "  Insert coin           2          5 for coin 1, 6 for coin 2\n"
+	  "  Simulator menu        M          \n"
+	  "\n"
+	  "  Coin up first, then start. The car pulls away in first gear; shift up\n"
+	  "  once it is moving, because third and fourth bog down from a standstill.\n"
+	  "\n");
+}
+
 int verilate() {
 
 	if (!Verilated::gotFinish()) {
@@ -766,6 +787,8 @@ int main(int argc, char** argv, char** env) {
 	input.SetMapping(input_select, SDL_SCANCODE_2);
 	input.SetMapping(input_menu, SDL_SCANCODE_M);
 #endif
+
+	print_controls();
 
 	if (headless_mode) {
 		output_ptr = (uint32_t*)malloc(video.output_width * video.output_height * 4);

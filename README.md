@@ -92,6 +92,23 @@ the interactive sim, or with options:
 ./obj_dir/Vemu --service                    # hold the self-test switch
 ```
 
+The simulator prints its control map on startup:
+
+| Action | Key | Alternate |
+|---|---|---|
+| Steer left / right | Left / Right | |
+| Gas | A | Left Ctrl |
+| Gear up | B | Left Alt |
+| Gear down | X | Space |
+| Track select | Y | Left Shift |
+| Start 1 player | L | F1, or 1 |
+| Start 2 player | E | F2 |
+| Insert coin | 2 | 5 for coin 1, 6 for coin 2 |
+| Simulator menu | M | |
+
+Coin up first, then start. The car pulls away in first gear; shift up once it
+is moving, because third and fourth bog down from a standstill.
+
 `verilate.sh` is an alternate one-shot script (currently using a different
 file set — Makefile is the source of truth).
 
