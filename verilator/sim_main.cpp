@@ -500,8 +500,18 @@ int verilate() {
 				if (screenshot_mode) {
 					auto it = std::find(screenshot_frames.begin(), screenshot_frames.end(), video.completed_frame);
 					if (it != screenshot_frames.end()) {
-						fprintf(stderr, "[car_rot] frame=%d value=0x%02X\n",
-					        video.completed_frame, (unsigned)top->dbg_car_rot);
+						{
+						auto* r = top->rootp;
+						fprintf(stderr,
+						        "[car_rot] frame=%d value=0x%02X  ScrollX=%02X ScrollY=%02X"
+						        "  IRQs=%u NMIs=%u CC=%02X\n",
+						        video.completed_frame, (unsigned)top->dbg_car_rot,
+						        r->emu__DOT__superbug__DOT__CPU__DOT__scroll_x_dbg,
+						        r->emu__DOT__superbug__DOT__CPU__DOT__scroll_y_dbg,
+						        (unsigned)r->emu__DOT__superbug__DOT__CPU__DOT__irq_count,
+						        (unsigned)r->emu__DOT__superbug__DOT__CPU__DOT__nmi_count,
+						        (unsigned)top->dbg_cc);
+					}
 					{
 						unsigned sd = top->dbg_sound;
 						fprintf(stderr,
@@ -545,10 +555,14 @@ int verilate() {
 						fprintf(stderr, " %02X", root->emu__DOT__superbug__DOT__Alpha__DOT__P3_RAM__DOT__mem[i]);
 						if ((i & 15) == 15) fprintf(stderr, "\n");
 					}
-					fprintf(stderr, "=== playfield RAM (E6 high nibble | F6 low nibble, 256 bytes) at frame %d ===\n", dump_ram_at_frame);
+					// E6 holds the low nibble and F6 the high one, per the two
+					// ram256 instances in playfield.v. The labels here used to be
+					// the other way round, which made every dumped byte look
+					// nibble-swapped against the reference.
+					fprintf(stderr, "=== playfield RAM (F6 high nibble | E6 low nibble, 256 bytes) at frame %d ===\n", dump_ram_at_frame);
 					for (int i = 0; i < 256; i++) {
-						uint8_t hi = root->emu__DOT__superbug__DOT__Playfield__DOT__E6__DOT__mem[i] & 0xF;
-						uint8_t lo = root->emu__DOT__superbug__DOT__Playfield__DOT__F6__DOT__mem[i] & 0xF;
+						uint8_t hi = root->emu__DOT__superbug__DOT__Playfield__DOT__F6__DOT__mem[i] & 0xF;
+						uint8_t lo = root->emu__DOT__superbug__DOT__Playfield__DOT__E6__DOT__mem[i] & 0xF;
 						fprintf(stderr, " %02X", (hi << 4) | lo);
 						if ((i & 15) == 15) fprintf(stderr, "\n");
 					}

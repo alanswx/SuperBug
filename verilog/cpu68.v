@@ -1361,7 +1361,18 @@ module cpu68(
         end
 
         ST_INT_WAI: begin
-            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_CLI; cc_ctrl=CC_LOAD;
+            // Waiting in WAI must not touch the condition codes. The VHDL this
+            // was ported from cleared the interrupt mask here, commented
+            // "enable interrupts", which is not what an MC6800 does: WAI stacks
+            // the machine state and waits, leaving the mask alone, so a program
+            // that sets the mask and then waits is woken only by a
+            // non-maskable interrupt.
+            //
+            // Clearing it let the periodic interrupt wake this game's main loop
+            // as well, running it seven times a frame instead of once. The car
+            // reached full speed within two frames of the throttle, drove off
+            // the road, and the fuel drained about six times too fast.
+            left_ctrl=LEFT_SP; right_ctrl=RIGHT_ONE; alu_ctrl=ALU_NOP; cc_ctrl=CC_LATCH;
             addr_ctrl=AD_IDLE; dout_ctrl=DO_CC;
             if (nmi_req & ~nmi_ack) begin
                 iv_ctrl    = IV_NMI;

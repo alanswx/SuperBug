@@ -3835,11 +3835,15 @@ process( state, op_code, cc, ea, irq, nmi_req, nmi_ack, hold, halt )
              md_ctrl    <= latch_md;
 			    op_ctrl    <= latch_op;
              ea_ctrl    <= latch_ea;
-             -- enable interrupts
+             -- Leave the condition codes alone. This used to clear the
+             -- interrupt mask, commented "enable interrupts", which an MC6800
+             -- does not do: WAI stacks the machine state and waits with the
+             -- mask unchanged, so a program that sets the mask and then waits
+             -- is woken only by a non-maskable interrupt.
              left_ctrl  <= sp_left;
              right_ctrl <= plus_one_right;
-             alu_ctrl   <= alu_cli;
-             cc_ctrl    <= load_cc;
+             alu_ctrl   <= alu_nop;
+             cc_ctrl    <= latch_cc;
              sp_ctrl    <= latch_sp;
 				 -- idle bus
              addr_ctrl  <= idle_ad;

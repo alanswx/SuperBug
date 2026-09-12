@@ -209,6 +209,19 @@ module cpu_mem(
     
     // Watchdog
     
+`ifdef SIMULATION
+    // Sim-only: count interrupt assertions so the rate can be compared with
+    // the reference. A game that runs fast usually means too many of these.
+    reg [15:0] irq_count, nmi_count;
+    reg prev_irq_n, prev_nmi_n;
+    always @(posedge Clk6) begin
+        prev_irq_n <= IRQ_n;
+        prev_nmi_n <= NMI_n;
+        if (prev_irq_n & ~IRQ_n) irq_count <= irq_count + 16'd1;
+        if (prev_nmi_n & ~NMI_n) nmi_count <= nmi_count + 16'd1;
+    end
+`endif
+
     assign irq = (~IRQ_n);
     assign nmi = (~NMI_n);
     
