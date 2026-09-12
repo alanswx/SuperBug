@@ -218,6 +218,10 @@ static uint32_t button_mask(const std::string& name) {
 	if (name == "start")     return 1u << 8;
 	if (name == "start2")    return 1u << 9;
 	if (name == "coin")      return 1u << 10;
+	if (name == "start3")    return 1u << 11;
+	// Fire Truck has no gears, so those two carry the horn and the bell.
+	if (name == "horn")      return 1u << 5;
+	if (name == "bell")      return 1u << 6;
 	fprintf(stderr, "--input: unknown button '%s'\n", name.c_str());
 	return 0;
 }
@@ -356,8 +360,8 @@ static void print_controls() {
 	  "  Steer left            Left       \n"
 	  "  Steer right           Right      \n"
 	  "  Gas                   A          Left Ctrl\n"
-	  "  Gear up               B          Left Alt\n"
-	  "  Gear down             X          Space\n"
+	  "  Gear up, Fire Truck horn    B    Left Alt\n"
+	  "  Gear down, Fire Truck bell  X    Space\n"
 	  "  Track select          Y          Left Shift\n"
 	  "  Start 1 player        L          F1, or 1\n"
 	  "  Start 2 player        E          F2\n"

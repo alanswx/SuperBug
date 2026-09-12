@@ -167,11 +167,15 @@ boot-timing difference, not a rendering one.
   are new, as is the seven-way mixer and the inverted sense of Fire Truck's
   extended play tone.
 
-  Still open for Fire Truck: the extra panel controls, which are threaded
-  through but tied inactive, so there is no way to press the bell, the horn,
-  the back player's start or the second wheel; and the ROM loader, so both
-  games ship from one bitstream rather than the simulator reading files
-  directly. The sound has not been compared against a recording.
+  The panel is wired. Fire Truck has no gears, so those two buttons carry the
+  horn and the bell, the second pad's left and right drive the back player's
+  wheel, and there is a button for the both-players start.
+
+  Still open for Fire Truck: the ROM loader, so both games ship from one
+  bitstream rather than the simulator reading files directly; the cabinet type
+  switch, fixed at the two-player Fire Truck cabinet rather than Smokey Joe;
+  and the diagnostic buttons. The sound has not been compared against a
+  recording.
 
 ---
 

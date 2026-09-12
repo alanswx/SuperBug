@@ -113,7 +113,8 @@ module emu (
 
 );
 wire [15:0] joystick_a0 =  joystick_l_analog_0;
-wire [15:0] joy = joystick_0 | joystick_1;
+wire [15:0] joy  = joystick_0 | joystick_1;
+wire [15:0] joy2 = joystick_1;      // back player, for Fire Truck's second wheel
 
 wire UART_CTS;
 wire UART_RTS;
@@ -178,6 +179,9 @@ wire m_next_track	=  btn_nexttrack | joy[7];
 // Start 1P button.
 wire m_start1 = btn_one_player  | joy[8];
 wire m_start2 = btn_two_players | joy[9];
+wire m_start3 = joy[11];
+wire btn_right2 = 1'b0;
+wire btn_left2  = 1'b0;
 // Coin must be its own button. Wiring start into the coin line looks like a
 // coin held down for as long as start is held, and the interrupt handler
 // checks the coin switch before the start switch and exits as soon as it sees
@@ -188,6 +192,16 @@ wire m_coin   = joy[10];
 
 
 wire [1:0] steer;
+wire [1:0] steer2;
+
+joy2quad steer2gen
+(
+        .CLK(clk_6),
+        .clkdiv('d22500),
+        .right(btn_right2 | joy2[0]),
+        .left(btn_left2 | joy2[1]),
+        .steer(steer2)
+);
 
 joy2quad steer1
 (
@@ -282,16 +296,17 @@ superbug superbug(
         .Game(game_select),
         .Slam_I(1'b1),
         .HSRes_I(1'b1),   // active low; unconnected reads as a held reset
-        // Fire Truck's extra panel. Inactive until its controls are mapped.
-        .Start2_I(1'b1),
-        .Start3_I(1'b1),
-        .Bell_I(1'b1),
-        .Horn_I(1'b1),
+        // Fire Truck's panel. It has no gears, so those two buttons carry the
+        // horn and the bell instead.
+        .Start2_I(~m_start2),
+        .Start3_I(~m_start3),
+        .Bell_I(~m_geardown),
+        .Horn_I(~m_gearup),
         .Cabinet_I(1'b1),      // two player Fire Truck cabinet
         .DiagHold_I(1'b1),
         .DiagStep_I(1'b1),
-        .Steer_2A_I(1'b0),
-        .Steer_2B_I(1'b0),
+        .Steer_2A_I(steer2[1]),
+        .Steer_2B_I(steer2[0]),
         .Trak_Sel_I(~m_next_track),
 
         .dbg_pc(dbg_pc),
