@@ -11,6 +11,67 @@ exist.
 
 ---
 
+## Progress log
+
+Updated 2026-09-12. Phase 0 is done, most of Phase 1 is done, Phase 2 has its
+first working implementation. One blocker was found along the way that was not
+in the original plan and now sits at the top of the list.
+
+**Done**
+
+- Phase 0 in full. `tools/pngdiff.py`, `tools/frame_compare.sh`, scripted input
+  through `--input`, WAV capture through `--audio-wav`, the raster probe, the
+  code-coverage trace, the switch-read trace, and a scratchpad RAM dump that
+  lines up with a matching MAME dump.
+- 1.1 Sprite verification. The car frame-select inversion was wrong and is
+  fixed. Verified across seven rotation values covering both ROM banks, all
+  four frame indices and every flip combination; each draws 100% of its
+  expected pixels with nothing extra.
+- 1.2 Layer alignment. The playfield window NAND, the horizontal position
+  counter preload, and the alpha and car pipeline offsets were all wrong.
+  Whole-frame mismatch against MAME went from 4.53% to about 0.5%, holding
+  across frames 100 to 700.
+- 1.4 Watchdog and the extended-play strobe both exist now.
+- 1.5 Partly. The joystick bit collision and the unconnected high score reset
+  are fixed, and a coin button was added to the menu.
+- 2.1 to 2.6. `rtl/sound.v` implements all four channels and the board's own
+  mixer weights. The core emits sixteen-bit PCM.
+- 2.7 Audio capture.
+- **Input multiplexer**, not in the original plan. Both 74153 select orders
+  were scrambled, so the gas pedal was answered at the wrong offset and never
+  reached the CPU at all.
+
+**Blocker: a game cannot be started**
+
+Coin and start are read correctly now, and the CPU sees the same switch values
+MAME does, but the program never reaches its game-start routine at $170F.
+Before the multiplexer fix a game could be started, but only by accident: the
+start switch was answered by the steer flag, which reads as permanently
+pressed from reset.
+
+What is established:
+
+- The CPU executes the same coin-handling code as MAME as far as $179B, then
+  diverges. Set-diffing executed ROM addresses shows MAME entering $170F-$173E
+  and a large amount of game code we never reach.
+- The 6800 scratchpad already differs during plain attract mode, with no input
+  at all, in what look like table pointers and free-running counters, even
+  though the video matches MAME frame for frame.
+- Our vertical timing is 256 lines per frame. The reference is 262. That is a
+  real difference in CPU time per frame and is the strongest lead. Decoding
+  the sync PROM to recover the true 262-line sequence did not work with the
+  obvious bit assignment, so the address bit order or the feedback path in
+  `rtl/synchronizer.v` needs checking against the schematic.
+
+Next step: fix the frame length, then re-diff the scratchpad at an early frame
+with no input. The scratchpad should match exactly during attract.
+
+**Still open**: 1.3 playfield cell-edge residual, the rest of 1.5, and 1.6
+through 1.8. Phase 2 needs tuning against a reference recording. Phase 3 has
+not been started.
+
+---
+
 ## Baseline measurement
 
 Captured 2026-09-11 by diffing our Verilator output against the MAME
