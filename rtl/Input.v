@@ -159,7 +159,7 @@ module Input(
             3'd2: begin ft_bit0 = SteerDir;        ft_bit6 = ~Start3_n;     ft_bit7 = ~SteerFlag;    end
             3'd3: begin ft_bit0 = SteerDir2;       ft_bit6 = ~TrackSel_n;   ft_bit7 = ~SteerFlag2;   end
             3'd4: begin ft_bit0 = ~Bell_n;         ft_bit6 = 1'b0;          ft_bit7 = ~Coin1_n;      end
-            3'd5: begin ft_bit0 = ~Slam_n;         ft_bit6 = VBlank;        ft_bit7 = ~Coin2_n;      end
+            3'd5: begin ft_bit0 = ~Slam_n;         ft_bit6 = ~VBlank;        ft_bit7 = ~Coin2_n;      end
             3'd6: begin ft_bit0 = ~SkidIn_n;       ft_bit6 = Cabinet;       ft_bit7 = ~CrashIn_n;    end
             3'd7: begin ft_bit0 = ~Test_n;         ft_bit6 = ~DiagHold_n;   ft_bit7 = ~DiagStep_n;   end
         endcase

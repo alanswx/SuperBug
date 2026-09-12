@@ -486,7 +486,10 @@ module cpu_mem(
 
     // Output latch. Super Bug encodes the value in the address at $026X; Fire
     // Truck writes it as data to $14C0, so the latch below has two forms.
-    assign Out2_n = firetrk ? ((SysEn & grp_hi_rd & Adr[7:5] == 3'b110) ? 1'b0 : 1'b1)
+    // Fire Truck takes the latch value from the data bus, so the strobe has to
+    // be a write. Super Bug takes it from the address and the original decode
+    // did not qualify the direction either way.
+    assign Out2_n = firetrk ? ((IO_Wr & grp_hi & Adr[7:5] == 3'b110) ? 1'b0 : 1'b1)
                             : ((SysEn & Adr[9] & Adr[7:5] == 3'b011) ? 1'b0 : 1'b1);
     // ASR — the extended-play tone strobe at $0220 (MAME: xtndply_w). This
     // had no decode at all, so the tone could never be triggered.
@@ -500,8 +503,21 @@ module cpu_mem(
     // Super Bug takes the latch value from the address lines, Fire Truck from
     // the data bus, and the bit order differs: Fire Truck puts attract on
     // bit 4 and adds a bell output on bit 7.
-    always @(posedge Out2_n)
+    // Clocked on Clk6 with an edge detector rather than on the decode itself.
+    // A combinational signal used as a clock is the hazard already corrected
+    // in car.v, playfield.v and the steering flip-flops: the simulator fires
+    // it at moments unrelated to the access. Here it was latching whatever
+    // happened to be on the bus, which set the video invert bit roughly every
+    // other frame and made the picture flash. The reference never writes this
+    // latch during the frames where we were flashing.
+    //
+    // The falling edge is the start of the access, where the address and data
+    // are both valid.
+    reg prev_Out2_n;
+    always @(posedge Clk6)
     begin: OutputLatch
+        prev_Out2_n <= Out2_n;
+        if (prev_Out2_n & ~Out2_n) begin
         if (firetrk) begin
             StartLamp   <= CPU_Dout[0];
             TrakSelLamp <= CPU_Dout[3];
@@ -514,6 +530,7 @@ module cpu_mem(
             Attract     <= Adr[1];
             Flash       <= Adr[2];
             Bell        <= 1'b0;
+        end
         end
     end
     
