@@ -22,6 +22,10 @@ module trailer(
     input  wire        DroneY_n,
     input  wire        DroneRot_n,
     input  wire [1:0]  Game,
+    input  wire [16:0] dn_addr,
+    input  wire [7:0]  dn_data,
+    input  wire        dn_wr,
+    input  wire        dn_clk,
     output reg         TrailerVideo
 );
 
@@ -71,7 +75,8 @@ module trailer(
     ROM_FT_TRAILER TRAILER_ROM(
         .clock(Clk6),
         .address({frame, rom_y, rom_x[5:3]}),
-        .q(rom_dout)
+        .q(rom_dout),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(dn_clk), .dn_base(17'h3400)
     );
 
     // The ROM output is a cycle behind the address, so hold the pixel select

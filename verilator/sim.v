@@ -266,7 +266,9 @@ superbug superbug(
 
         .dn_addr(ioctl_addr[16:0]),
         .dn_data(ioctl_dout),
-        .dn_wr(ioctl_wr),
+        // Index 0 is the packed ROM image the MRA produces; index 1 is the
+        // one byte game select, which the harness takes from --game instead.
+        .dn_wr(ioctl_wr && ioctl_index == 8'd0),
         .Audio_O(audio),
 
         .Video1_O(videowht),

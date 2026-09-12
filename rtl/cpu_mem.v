@@ -45,6 +45,10 @@ module cpu_mem(
     DroneY_n,
     DroneRot_n,
     Game,
+    dn_addr,
+    dn_data,
+    dn_wr,
+    dn_clk,
     Adr,
     DBus_in,
     DBus_out,
@@ -97,6 +101,10 @@ module cpu_mem(
     output        DroneY_n;
     output        DroneRot_n;
     input [1:0]   Game;        // 0 = Super Bug, 1 = Fire Truck
+    input [16:0]  dn_addr;     // ROM loader, from the MRA download
+    input [7:0]   dn_data;
+    input         dn_wr;
+    input         dn_clk;    // the download runs at the system clock rate
     output [15:0] Adr;
     input [7:0]   DBus_in;
     output [7:0]  DBus_out;
@@ -304,21 +312,24 @@ module cpu_mem(
     ROM_D1 D1(
         .clock(Clk6),
         .address(Adr[10:0]),
-        .q(ROM1_Dout)
+        .q(ROM1_Dout),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(dn_clk), .dn_base(17'h0000)
     );
     
     
     ROM_C1 C1(
         .clock(Clk6),
         .address(Adr[10:0]),
-        .q(ROM2_Dout)
+        .q(ROM2_Dout),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(dn_clk), .dn_base(17'h0800)
     );
     
     
     ROM_A1 A1(
         .clock(Clk6),
         .address(Adr[10:0]),
-        .q(ROM3_Dout)
+        .q(ROM3_Dout),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(dn_clk), .dn_base(17'h1000)
     );
     
     // Fire Truck's program is one eight kilobyte image at $2000, where Super
@@ -327,7 +338,8 @@ module cpu_mem(
     ROM_FT_PROG FT_PROG(
         .clock(Clk6),
         .address(Adr[12:0]),
-        .q(FT_ROM_Dout)
+        .q(FT_ROM_Dout),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(dn_clk), .dn_base(17'h0000)
     );
     wire FT_ROMce_n = ~(BVMA & Adr[13]);
 

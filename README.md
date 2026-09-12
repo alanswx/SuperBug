@@ -77,6 +77,7 @@ make            # builds ./obj_dir/Vemu
 make fast       # rebuild C++ with aggressive GCC flags
 make clean
 make glyphtest  # builds with the playfield-glyph test ROM A1 shim
+make loader     # builds with no ROMs inside, so they must come from --rom
 ```
 
 The harness compiles `sim.v` + `rtl/*.v` together with `sim_main.cpp` and
@@ -108,6 +109,16 @@ The simulator prints its control map on startup:
 
 Coin up first, then start. The car pulls away in first gear; shift up once it
 is moving, because third and fourth bog down from a standstill.
+
+Build the packed ROM image the way MiSTer does, from the MRA:
+
+```sh
+tools/mra.py "releases/Super Bug.mra"  --zipdir roms --out superbug.rom --verify
+tools/mra.py "releases/Fire Truck.mra" --zipdir roms --out firetrk.rom --verify
+```
+
+`./obj_dir/Vemu --rom superbug.rom` then feeds it to the core's loader instead
+of the ROMs being built into the simulation, which is what hardware does.
 
 Pass `--game 1` for Fire Truck, which shares the same core. It has no gears, so
 those two buttons carry the horn and the bell instead, and the second pad's

@@ -27,7 +27,11 @@ module car(
     CarVideo,
     CarEna_dbg,
     CarRot_dbg,
-    Game
+    Game,
+    dn_addr,
+    dn_data,
+    dn_wr,
+    dn_clk
 );
     input        Clk6;
     input        Clk50;
@@ -41,6 +45,10 @@ module car(
     output       CarEna_dbg;   // sprite window enable, for raster-position debugging
     output [4:0] CarRot_dbg;   // latched rotation register, write-only to the CPU
     input [1:0]  Game;		// 0 = Super Bug, 1 = Fire Truck
+    input [16:0] dn_addr;	// ROM loader, from the MRA download
+    input [7:0]  dn_data;
+    input        dn_wr;
+    input        dn_clk;	// the download runs at the system clock rate
     
     
     wire         H1;
@@ -140,7 +148,8 @@ module car(
     K6_ROM K6(
         .clock(Clk50),
         .address(CarROM_Adr),
-        .q(CarROM_Dout)
+        .q(CarROM_Dout),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(dn_clk), .dn_base(17'h2C00)
     );
     
     localparam GAME_FIRETRK = 2'd1;
@@ -158,7 +167,8 @@ module car(
     ROM_FT_CAR FT_CAR(
         .clock(Clk6),
         .address({R1, R0, CV, CH[4:2]}),
-        .q(ft_car_dout)
+        .q(ft_car_dout),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(dn_clk), .dn_base(17'h3000)
     );
     wire ft_pixel = ft_car_dout[3 - CH[1:0]];
 

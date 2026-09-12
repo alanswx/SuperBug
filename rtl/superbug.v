@@ -239,6 +239,7 @@ module superbug(
         .Flash(Flash),
         .Bell(Bell),
         .Game(Game),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(Clk12),
         .In1_n(In1_n),
         .Opt_n(Opt_n),
         .PHP_Load_n(PHP_Load_n),
@@ -302,7 +303,8 @@ module superbug(
         .BVMA(BVMA),
         .Sys_en(Sys_en),
         .A_NVideo(A_NVideo),
-        .Game(Game)
+        .Game(Game),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(Clk12)
     );
     
     
@@ -318,7 +320,8 @@ module superbug(
         .CarVideo(CarVideo),
         .CarEna_dbg(dbg_carena),
         .CarRot_dbg(dbg_car_rot),
-        .Game(Game)
+        .Game(Game),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(Clk12)
     );
     
     // AJS put this back in (playfield)
@@ -349,7 +352,8 @@ module superbug(
         .PCC1(PCC1),
         .PCC2(PCC2),
         .Pfld(Pfld),
-        .Game(Game)
+        .Game(Game),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(Clk12)
     );
     
     
@@ -363,6 +367,7 @@ module superbug(
         .DroneY_n(DroneY_n),
         .DroneRot_n(DroneRot_n),
         .Game(Game),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(Clk12),
         .TrailerVideo(TrailerVideo)
     );
 

@@ -5,61 +5,117 @@
 
 `default_nettype none
 
-module ROM_M3 (input wire clock, input wire [9:0] address, output reg [3:0] q);
+module ROM_M3 (input wire clock, input wire [9:0] address, output reg [3:0] q,
+    input wire [16:0] dn_addr, input wire [7:0] dn_data, input wire dn_wr,
+    input wire [16:0] dn_base, input wire dn_clk);
     reg [3:0] mem [0:1023];
+`ifndef ROM_FROM_LOADER
     initial $readmemh("../roms/hex/009124m3.hex", mem);
+`endif
+    wire dn_sel = dn_wr && (dn_addr >= dn_base) && (dn_addr < dn_base + 17'd1024);
+    always @(posedge dn_clk) if (dn_sel) mem[dn_addr[9:0] - dn_base[9:0]] <= dn_data[3:0];
     always @(posedge clock) q <= mem[address];
 endmodule
 
-module ROM_N3 (input wire clock, input wire [9:0] address, output reg [3:0] q);
+module ROM_N3 (input wire clock, input wire [9:0] address, output reg [3:0] q,
+    input wire [16:0] dn_addr, input wire [7:0] dn_data, input wire dn_wr,
+    input wire [16:0] dn_base, input wire dn_clk);
     reg [3:0] mem [0:1023];
+`ifndef ROM_FROM_LOADER
     initial $readmemh("../roms/hex/009471n3.hex", mem);
+`endif
+    wire dn_sel = dn_wr && (dn_addr >= dn_base) && (dn_addr < dn_base + 17'd1024);
+    always @(posedge dn_clk) if (dn_sel) mem[dn_addr[9:0] - dn_base[9:0]] <= dn_data[3:0];
     always @(posedge clock) q <= mem[address];
 endmodule
 
-module ROM_E5 (input wire clock, input wire [9:0] address, output reg [3:0] q);
+module ROM_E5 (input wire clock, input wire [9:0] address, output reg [3:0] q,
+    input wire [16:0] dn_addr, input wire [7:0] dn_data, input wire dn_wr,
+    input wire [16:0] dn_base, input wire dn_clk);
     reg [3:0] mem [0:1023];
+`ifndef ROM_FROM_LOADER
     initial $readmemh("../roms/hex/009127e5.hex", mem);
+`endif
+    wire dn_sel = dn_wr && (dn_addr >= dn_base) && (dn_addr < dn_base + 17'd1024);
+    always @(posedge dn_clk) if (dn_sel) mem[dn_addr[9:0] - dn_base[9:0]] <= dn_data[3:0];
     always @(posedge clock) q <= mem[address];
 endmodule
 
-module ROM_F5 (input wire clock, input wire [9:0] address, output reg [3:0] q);
+module ROM_F5 (input wire clock, input wire [9:0] address, output reg [3:0] q,
+    input wire [16:0] dn_addr, input wire [7:0] dn_data, input wire dn_wr,
+    input wire [16:0] dn_base, input wire dn_clk);
     reg [3:0] mem [0:1023];
+`ifndef ROM_FROM_LOADER
     initial $readmemh("../roms/hex/009126f5.hex", mem);
+`endif
+    wire dn_sel = dn_wr && (dn_addr >= dn_base) && (dn_addr < dn_base + 17'd1024);
+    always @(posedge dn_clk) if (dn_sel) mem[dn_addr[9:0] - dn_base[9:0]] <= dn_data[3:0];
     always @(posedge clock) q <= mem[address];
 endmodule
 
-module ROM_H5 (input wire clock, input wire [9:0] address, output reg [3:0] q);
+module ROM_H5 (input wire clock, input wire [9:0] address, output reg [3:0] q,
+    input wire [16:0] dn_addr, input wire [7:0] dn_data, input wire dn_wr,
+    input wire [16:0] dn_base, input wire dn_clk);
     reg [3:0] mem [0:1023];
+`ifndef ROM_FROM_LOADER
     initial $readmemh("../roms/hex/009472h5.hex", mem);
+`endif
+    wire dn_sel = dn_wr && (dn_addr >= dn_base) && (dn_addr < dn_base + 17'd1024);
+    always @(posedge dn_clk) if (dn_sel) mem[dn_addr[9:0] - dn_base[9:0]] <= dn_data[3:0];
     always @(posedge clock) q <= mem[address];
 endmodule
 
-module K6_ROM (input wire clock, input wire [9:0] address, output reg [3:0] q);
+module K6_ROM (input wire clock, input wire [9:0] address, output reg [3:0] q,
+    input wire [16:0] dn_addr, input wire [7:0] dn_data, input wire dn_wr,
+    input wire [16:0] dn_base, input wire dn_clk);
     reg [3:0] mem [0:1023];
+`ifndef ROM_FROM_LOADER
     initial $readmemh("../roms/hex/009125k6.hex", mem);
+`endif
+    wire dn_sel = dn_wr && (dn_addr >= dn_base) && (dn_addr < dn_base + 17'd1024);
+    always @(posedge dn_clk) if (dn_sel) mem[dn_addr[9:0] - dn_base[9:0]] <= dn_data[3:0];
     always @(posedge clock) q <= mem[address];
 endmodule
 
-module ROM_D1 (input wire clock, input wire [10:0] address, output reg [7:0] q);
+module ROM_D1 (input wire clock, input wire [10:0] address, output reg [7:0] q,
+    input wire [16:0] dn_addr, input wire [7:0] dn_data, input wire dn_wr,
+    input wire [16:0] dn_base, input wire dn_clk);
     reg [7:0] mem [0:2047];
+`ifndef ROM_FROM_LOADER
     initial $readmemh("../roms/hex/009121d1.hex", mem);
+`endif
+    wire dn_sel = dn_wr && (dn_addr >= dn_base) && (dn_addr < dn_base + 17'd2048);
+    always @(posedge dn_clk) if (dn_sel) mem[dn_addr[10:0] - dn_base[10:0]] <= dn_data;
     always @(posedge clock) q <= mem[address];
 endmodule
 
-module ROM_C1 (input wire clock, input wire [10:0] address, output reg [7:0] q);
+module ROM_C1 (input wire clock, input wire [10:0] address, output reg [7:0] q,
+    input wire [16:0] dn_addr, input wire [7:0] dn_data, input wire dn_wr,
+    input wire [16:0] dn_base, input wire dn_clk);
     reg [7:0] mem [0:2047];
+`ifndef ROM_FROM_LOADER
     initial $readmemh("../roms/hex/009122c1.hex", mem);
+`endif
+    wire dn_sel = dn_wr && (dn_addr >= dn_base) && (dn_addr < dn_base + 17'd2048);
+    always @(posedge dn_clk) if (dn_sel) mem[dn_addr[10:0] - dn_base[10:0]] <= dn_data;
     always @(posedge clock) q <= mem[address];
 endmodule
 
-module ROM_A1 (input wire clock, input wire [10:0] address, output reg [7:0] q);
+module ROM_A1 (input wire clock, input wire [10:0] address, output reg [7:0] q,
+    input wire [16:0] dn_addr, input wire [7:0] dn_data, input wire dn_wr,
+    input wire [16:0] dn_base, input wire dn_clk);
     reg [7:0] mem [0:2047];
 `ifdef GLYPH_TEST
+`ifndef ROM_FROM_LOADER
     initial $readmemh("../roms/hex/glyphtest_a1.hex", mem);
+`endif
 `else
+`ifndef ROM_FROM_LOADER
     initial $readmemh("../roms/hex/009123a1.hex", mem);
 `endif
+`endif
+    wire dn_sel = dn_wr && (dn_addr >= dn_base) && (dn_addr < dn_base + 17'd2048);
+    always @(posedge dn_clk) if (dn_sel) mem[dn_addr[10:0] - dn_base[10:0]] <= dn_data;
     always @(posedge clock) q <= mem[address];
 endmodule
 
@@ -110,33 +166,63 @@ endmodule
 // The program image is 8 KB at $2000; its upper half comes from two pairs of
 // nibble-wide PROMs which that script recombines.
 // ---------------------------------------------------------------------------
-module ROM_FT_PROG (input wire clock, input wire [12:0] address, output reg [7:0] q);
+module ROM_FT_PROG (input wire clock, input wire [12:0] address, output reg [7:0] q,
+    input wire [16:0] dn_addr, input wire [7:0] dn_data, input wire dn_wr,
+    input wire [16:0] dn_base, input wire dn_clk);
     reg [7:0] mem [0:8191];
+`ifndef ROM_FROM_LOADER
     initial $readmemh("../roms/hex/firetrk_prog.hex", mem);
+`endif
+    wire dn_sel = dn_wr && (dn_addr >= dn_base) && (dn_addr < dn_base + 17'd8192);
+    always @(posedge dn_clk) if (dn_sel) mem[dn_addr[12:0] - dn_base[12:0]] <= dn_data;
     always @(posedge clock) q <= mem[address];
 endmodule
 
-module ROM_FT_CHARS (input wire clock, input wire [10:0] address, output reg [7:0] q);
+module ROM_FT_CHARS (input wire clock, input wire [10:0] address, output reg [7:0] q,
+    input wire [16:0] dn_addr, input wire [7:0] dn_data, input wire dn_wr,
+    input wire [16:0] dn_base, input wire dn_clk);
     reg [7:0] mem [0:2047];
+`ifndef ROM_FROM_LOADER
     initial $readmemh("../roms/hex/firetrk_chars.hex", mem);
+`endif
+    wire dn_sel = dn_wr && (dn_addr >= dn_base) && (dn_addr < dn_base + 17'd2048);
+    always @(posedge dn_clk) if (dn_sel) mem[dn_addr[10:0] - dn_base[10:0]] <= dn_data;
     always @(posedge clock) q <= mem[address];
 endmodule
 
-module ROM_FT_TILES (input wire clock, input wire [10:0] address, output reg [7:0] q);
+module ROM_FT_TILES (input wire clock, input wire [10:0] address, output reg [7:0] q,
+    input wire [16:0] dn_addr, input wire [7:0] dn_data, input wire dn_wr,
+    input wire [16:0] dn_base, input wire dn_clk);
     reg [7:0] mem [0:2047];
+`ifndef ROM_FROM_LOADER
     initial $readmemh("../roms/hex/firetrk_tiles.hex", mem);
+`endif
+    wire dn_sel = dn_wr && (dn_addr >= dn_base) && (dn_addr < dn_base + 17'd2048);
+    always @(posedge dn_clk) if (dn_sel) mem[dn_addr[10:0] - dn_base[10:0]] <= dn_data;
     always @(posedge clock) q <= mem[address];
 endmodule
 
-module ROM_FT_CAR (input wire clock, input wire [9:0] address, output reg [7:0] q);
+module ROM_FT_CAR (input wire clock, input wire [9:0] address, output reg [7:0] q,
+    input wire [16:0] dn_addr, input wire [7:0] dn_data, input wire dn_wr,
+    input wire [16:0] dn_base, input wire dn_clk);
     reg [7:0] mem [0:1023];
+`ifndef ROM_FROM_LOADER
     initial $readmemh("../roms/hex/firetrk_car.hex", mem);
+`endif
+    wire dn_sel = dn_wr && (dn_addr >= dn_base) && (dn_addr < dn_base + 17'd1024);
+    always @(posedge dn_clk) if (dn_sel) mem[dn_addr[9:0] - dn_base[9:0]] <= dn_data;
     always @(posedge clock) q <= mem[address];
 endmodule
 
-module ROM_FT_TRAILER (input wire clock, input wire [11:0] address, output reg [7:0] q);
+module ROM_FT_TRAILER (input wire clock, input wire [11:0] address, output reg [7:0] q,
+    input wire [16:0] dn_addr, input wire [7:0] dn_data, input wire dn_wr,
+    input wire [16:0] dn_base, input wire dn_clk);
     reg [7:0] mem [0:4095];
+`ifndef ROM_FROM_LOADER
     initial $readmemh("../roms/hex/firetrk_trailer.hex", mem);
+`endif
+    wire dn_sel = dn_wr && (dn_addr >= dn_base) && (dn_addr < dn_base + 17'd4096);
+    always @(posedge dn_clk) if (dn_sel) mem[dn_addr[11:0] - dn_base[11:0]] <= dn_data;
     always @(posedge clock) q <= mem[address];
 endmodule
 

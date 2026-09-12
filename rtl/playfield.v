@@ -38,7 +38,11 @@ module playfield(
     PCC1,
     PCC2,
     Pfld,
-    Game
+    Game,
+    dn_addr,
+    dn_data,
+    dn_wr,
+    dn_clk
 );
     input        Clk6;
     input        RW_n;
@@ -64,6 +68,10 @@ module playfield(
     output       PCC2;
     output       Pfld;
     input [1:0]  Game;		// 0 = Super Bug, 1 = Fire Truck
+    input [16:0] dn_addr;	// ROM loader, from the MRA download
+    input [7:0]  dn_data;
+    input        dn_wr;
+    input        dn_clk;	// the download runs at the system clock rate
     
     
     wire         H1;
@@ -173,7 +181,8 @@ module playfield(
     ROM_FT_TILES FT_TILES(
         .clock(Clk6),
         .address({PD[5:0], PVP[3:0], PHP_nibble_d[1]}),
-        .q(ft_tile_dout)
+        .q(ft_tile_dout),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(dn_clk), .dn_base(17'h2800)
     );
     wire [3:0] ft_half = PHP_nibble_d[0] ? ft_tile_dout[3:0] : ft_tile_dout[7:4];
     wire [3:0] ft_vid  = {ft_half[0], ft_half[1], ft_half[2], ft_half[3]};
@@ -183,21 +192,24 @@ module playfield(
     ROM_E5 E5(
         .clock(Clk6),
         .address(PFROM_Adr),
-        .q(E5_Dout)
+        .q(E5_Dout),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(dn_clk), .dn_base(17'h2800)
     );
     
     
     ROM_F5 F5(
         .clock(Clk6),
         .address(PFROM_Adr),
-        .q(F5_Dout)
+        .q(F5_Dout),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(dn_clk), .dn_base(17'h2000)
     );
     
     
     ROM_H5 H5(
         .clock(Clk6),
         .address(PFROM_Adr),
-        .q(H5_Dout)
+        .q(H5_Dout),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(dn_clk), .dn_base(17'h2400)
     );
     
     // CE lines are labeled strangely on schematic — original VHDL was

@@ -28,7 +28,11 @@ module alpha_numerics(
     BVMA,
     Sys_en,
     A_NVideo,
-    Game
+    Game,
+    dn_addr,
+    dn_data,
+    dn_wr,
+    dn_clk
 );
     input        Clk6;
     input        Phi2;
@@ -44,6 +48,10 @@ module alpha_numerics(
     output       Sys_en;
     output       A_NVideo;
     input [1:0]  Game;		// 0 = Super Bug, 1 = Fire Truck
+    input [16:0] dn_addr;	// ROM loader, from the MRA download
+    input [7:0]  dn_data;
+    input        dn_wr;
+    input        dn_clk;	// the download runs at the system clock rate
     
     
     //signal H4				: std_logic;
@@ -194,7 +202,8 @@ module alpha_numerics(
     ROM_FT_CHARS FT_CHARS(
         .clock(Clk6),
         .address({RAM_Dout[4:0], VCount[3:0], HCountA[3:2] + 2'd2}),
-        .q(ft_char_dout)
+        .q(ft_char_dout),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(dn_clk), .dn_base(17'h2000)
     );
 
     assign rom_m3_addr = {RAM_Dout[3:0], VCount[3:0], HCountA[3:2]};
@@ -202,7 +211,8 @@ module alpha_numerics(
     ROM_M3 M3_ROM(
         .clock(Clk6),
         .address(rom_m3_addr),
-        .q(M3_Dout)
+        .q(M3_Dout),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(dn_clk), .dn_base(17'h1800)
     );
 
     assign rom_n3_addr = {RAM_Dout[3:0], VCount[3:0], HCountA[3:2]};
@@ -210,7 +220,8 @@ module alpha_numerics(
     ROM_N3 N3_ROM(
         .clock(Clk6),
         .address(rom_n3_addr),
-        .q(N3_Dout)
+        .q(N3_Dout),
+        .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(dn_clk), .dn_base(17'h1C00)
     );
     
     // Alphanumeric ROMs are selected by RAM_Dout(4)

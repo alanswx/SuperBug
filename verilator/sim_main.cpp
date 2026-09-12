@@ -135,6 +135,10 @@ SimAudio audio(clk_sys_freq, false);
 // tool will open, and without a capture path the sound channels can only be
 // judged by ear.
 std::string audio_wav_path;
+// --rom <file>: feed the packed image an MRA produces to the core's loader,
+// the same way the MiSTer main does, instead of the ROMs being built into the
+// simulation. Build one with tools/mra.py.
+std::string rom_path;
 
 // --switch-pc-trace: collect the distinct (switch address, program counter)
 // pairs the CPU uses to read the coin, start and gear switches, so the code
@@ -680,6 +684,8 @@ int main(int argc, char** argv, char** env) {
 			watch_to   = atoi(argv[++i]);
 		} else if (!strcmp(argv[i], "--switch-pc-trace")) {
 			switch_pc_trace = true;
+		} else if (!strcmp(argv[i], "--rom") && i + 1 < argc) {
+			rom_path = argv[++i];
 		} else if (!strcmp(argv[i], "--game") && i + 1 < argc) {
 			game_select = atoi(argv[++i]);
 		} else if (!strcmp(argv[i], "--service")) {
@@ -797,6 +803,11 @@ int main(int argc, char** argv, char** env) {
 #endif
 
 	print_controls();
+
+	if (!rom_path.empty()) {
+		fprintf(stderr, "rom: loading %s through the core's loader\n", rom_path.c_str());
+		bus.QueueDownload(rom_path, 0, 1);
+	}
 
 	if (headless_mode) {
 		output_ptr = (uint32_t*)malloc(video.output_width * video.output_height * 4);
