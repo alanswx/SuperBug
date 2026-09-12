@@ -81,6 +81,29 @@ RAM matches byte for byte at most checked frames.
 Rendering during gameplay is correct: a captured gameplay frame matches the
 reference to 0.16% once the small forward-position offset is taken out.
 
+**Gearshift**
+
+Every up-shift jumped straight to fourth gear: the branch handling gear-down
+cleared the gear-up edge flag rather than its own, so a held button counted a
+gear on every clock. Fourth gear from a standstill bogs the car down, so
+shifting up made the game slower. Rewritten with proper edge detection.
+Forward speed per gear now matches the reference: 0.75 and 0.89 per frame in
+first and second, against 0.75 and 0.92.
+
+**Simulation speed**
+
+The Verilator build runs about 39 emulated frames per second headless on this
+machine, where the game needs 60. Everything the game does is paced by vertical
+blank, so it plays at roughly two thirds speed and the interactive build will
+be slower still. This is simulation throughput, not a core fault.
+
+Compiler flags are not the limit: raising the build from -Os to -O3 with
+Verilator -O3 gained about three percent, and the design converges in well under
+twenty iterations so the large converge limit is not being used. The remaining
+cost is the two hundred thousand evaluations per emulated frame. Dropping VCD
+tracing would help but the RAM and register dumps reach into internal signals
+that only tracing keeps visible, so that needs `verilator public` markers first.
+
 **Known cosmetic difference**
 
 For the first four frames after power-on the top text row shows the character
