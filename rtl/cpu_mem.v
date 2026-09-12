@@ -41,6 +41,9 @@ module cpu_mem(
     CrashSnd_n,
     SkidSnd_n,
     ASR_n,
+    DroneX_n,
+    DroneY_n,
+    DroneRot_n,
     Game,
     Adr,
     DBus_in,
@@ -89,6 +92,10 @@ module cpu_mem(
     output        CrashSnd_n;
     output        SkidSnd_n;
     output        ASR_n;       // extended-play tone strobe ($0220)
+    // Fire Truck's trailer position and rotation, $1460, $1480 and $14A0.
+    output        DroneX_n;
+    output        DroneY_n;
+    output        DroneRot_n;
     input [1:0]   Game;        // 0 = Super Bug, 1 = Fire Truck
     output [15:0] Adr;
     input [7:0]   DBus_in;
@@ -484,6 +491,10 @@ module cpu_mem(
     // ASR — the extended-play tone strobe at $0220 (MAME: xtndply_w). This
     // had no decode at all, so the tone could never be triggered.
     assign ASR_n = (IO_Wr & grp_hi & Adr[7:5] == (firetrk ? 3'b111 : 3'b001)) ? 1'b0 : 1'b1;
+
+    assign DroneX_n   = (firetrk & IO_Wr & grp_hi & Adr[7:5] == 3'b011) ? 1'b0 : 1'b1;
+    assign DroneY_n   = (firetrk & IO_Wr & grp_hi & Adr[7:5] == 3'b100) ? 1'b0 : 1'b1;
+    assign DroneRot_n = (firetrk & IO_Wr & grp_hi & Adr[7:5] == 3'b101) ? 1'b0 : 1'b1;
     
     
     // Super Bug takes the latch value from the address lines, Fire Truck from

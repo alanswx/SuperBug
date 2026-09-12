@@ -161,6 +161,11 @@ module superbug(
     wire         Bell;
     wire         Pfld;
     wire         CarVideo;
+    wire         CarOrTrailer;
+    wire         TrailerVideo;
+    wire         DroneX_n;
+    wire         DroneY_n;
+    wire         DroneRot_n;
     wire         A_NVideo;
     wire         Crash_n;
     wire         Skid_n;
@@ -247,6 +252,9 @@ module superbug(
         .CrashSnd_n(CrashSnd_n),
         .SkidSnd_n(SkidSnd_n),
         .ASR_n(ASR_n),
+        .DroneX_n(DroneX_n),
+        .DroneY_n(DroneY_n),
+        .DroneRot_n(DroneRot_n),
         .Adr(CPU_Adr),
         .DBus_in(CPU_Din),
         .DBus_out(CPU_Dout),
@@ -272,7 +280,7 @@ module superbug(
         .PFWndo(PFWndo),
         .Flash(Flash),
         .Pfld(Pfld),
-        .CarVideo(CarVideo),
+        .CarVideo(CarOrTrailer),
         .A_NVideo(A_NVideo),
         .CSync(Sync_O),
         .Video1(Video1_O),
@@ -342,6 +350,22 @@ module superbug(
     );
     
     
+    // Fire Truck's trailer. Idle for Super Bug, whose strobes never fire.
+    trailer Trailer(
+        .Clk6(Clk6),
+        .HCount(HCount),
+        .VCount(VCount),
+        .BD(CPU_Dout),
+        .DroneX_n(DroneX_n),
+        .DroneY_n(DroneY_n),
+        .DroneRot_n(DroneRot_n),
+        .Game(Game),
+        .TrailerVideo(TrailerVideo)
+    );
+
+    // Both vehicles are drawn in the same colour, so the mixer sees one signal.
+    assign CarOrTrailer = CarVideo | TrailerVideo;
+
     Input ControlInputs(
         .DIP_Sw(DIP_Sw),
         .Coin1_n(Coin1_I),

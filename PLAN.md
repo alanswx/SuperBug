@@ -145,17 +145,24 @@ boot-timing difference, not a rendering one.
   whole memory decode parameterised for both maps; the two forms of the output
   latch; and releases/Fire Truck.mra.
 
-  Blocked on ROMs: the Fire Truck set is not in this tree, so neither the
-  reference nor the simulator can run the game and none of the Fire Truck paths
-  can be checked against anything. Eleven files are needed; the twelfth, the
-  sync PROM, is already here because both games use the same part.
+  The ROM set arrived, so everything since has been checked against the
+  reference. Fire Truck now boots and draws, with whole-frame mismatch in
+  attract of 0.17%, 0.43% and 0.17% at frames 60, 200 and 400, which is the
+  same league as Super Bug.
 
-  Next, in order, once the ROMs are present: the ROM loader, which both games
-  need and which can be proved on Super Bug first; the alphanumeric RAM sharing
-  the processor's direct page; the graphics ROM organisation and bit orders
-  selected by game; the trailer sprite and its collision channel; the wider
-  input port and the coinage DIP bits Super Bug does not use; and the three
-  extra sound channels.
+  Done as well: the program ROM, including the half that comes from two pairs
+  of nibble-wide PROMs; the alphanumeric RAM sharing the processor's direct
+  page, which needed a dual-ported RAM because that page is written constantly;
+  the character, tile and truck ROM organisations, all three laid out
+  differently from Super Bug's; the trailer generator, the only picture
+  generator Super Bug has no counterpart for; and the wider input port with the
+  second steering wheel and the coinage switches Super Bug leaves unused.
+
+  Still open for Fire Truck: the trailer's own collision channel, currently
+  shared with the truck's; the three extra sound channels, siren, horn and
+  bell; the extra panel controls, which are threaded through but tied inactive;
+  and the ROM loader, so both games ship from one bitstream rather than the
+  simulator reading files directly.
 
 ---
 
