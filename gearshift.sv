@@ -1,99 +1,55 @@
 //============================================================================
 //  gearshift
 //
-//  Turn gearup and geardown buttons into state that can flip the correct switches
-//  for sprint
-//
+//  Turn gear-up and gear-down buttons into the switch pattern the game
+//  expects. Three switches, active low and one hot for gears 1 to 3; fourth
+//  gear is none of them closed.
 //
 //  Copyright (c) 2019 Alan Steremberg - alanswx
 //
-//   
 //============================================================================
-
 module gearshift
 (
-	input CLK,
-	input reset,
-	
-	input gearup,
-	input geardown,
-	
-	
+	input  CLK,
+	input  reset,
+
+	input  gearup,
+	input  geardown,
+
 	output reg gear1,
 	output reg gear2,
 	output reg gear3
 );
 
-reg [2:0] gear=3'b0;
+// The edge detection here used to be broken in a way that made every up-shift
+// jump straight to fourth: the branch handling gear-down cleared the gear-up
+// edge flag rather than its own, so while the gear-up button was held the flag
+// was cleared again on every clock and a gear was counted on every clock. At
+// six megahertz a single button press ran the counter to the top instantly.
+// Selecting fourth gear from a standstill bogs the car down, so shifting up
+// made the game slower rather than faster, and gear-down only ever worked once.
+
+reg [1:0] gear = 2'd0;
+reg       old_gearup = 1'b0;
+reg       old_geardown = 1'b0;
 
 always @(posedge CLK) begin
-  	reg old_gear_up;
-	reg old_gear_down;
-	
-	if (reset)
-		gear=0;
-		
-	if (gearup==1)
-	begin
-	   if (old_gear_up==0)
-		begin
-			old_gear_up=1;
-			if (gear<4)
-			begin
-				gear=gear+1;
-			end
-		end
-	end
-	else
-	begin
-		old_gear_up=0;
-	end
-	if (geardown==1)
-	begin
-	   if (old_gear_down==0)
-		begin
-			old_gear_down=1;
-			if (gear>0)
-			begin
-			gear=gear-1;
-			end
-		end
-	end
-	else
-	begin
-		old_gear_up=0;
-	end
+	old_gearup   <= gearup;
+	old_geardown <= geardown;
 
-	
-	casex(gear)
-	3'b000: 
-	begin
-		gear1=0;
-		gear2=1;
-		gear3=1;
+	if (reset) begin
+		gear <= 2'd0;
+	end else if (gearup & ~old_gearup) begin
+		if (gear != 2'd3) gear <= gear + 2'd1;
+	end else if (geardown & ~old_geardown) begin
+		if (gear != 2'd0) gear <= gear - 2'd1;
 	end
-	3'b001:
-	begin
-		gear1=1;
-		gear2=0;
-		gear3=1;
-
-	end
-	3'b010: 
-	begin
-		gear1=1;
-		gear2=1;
-		gear3=0;
-	end
-	3'b011:
-	begin
-		gear1=1;
-		gear2=1;
-		gear3=1;
-	end
-		endcase
-
 end
 
+always @(*) begin
+	gear1 = ~(gear == 2'd0);
+	gear2 = ~(gear == 2'd1);
+	gear3 = ~(gear == 2'd2);
+end
 
 endmodule
