@@ -230,21 +230,18 @@ module playfield(
     // road area with tile-0 noise instead of staying black. Same schematic
     // mislabel kind as the PD[5:4] mux fix in commit a6cc504. Wire each
     // RAM half straight through so display PD = byte the CPU wrote.
-    ram256 E6(
+    // Dual ported. The single port used to be shared by address mux, which
+    // meant every processor access stole that pixel's read and tore a hole in
+    // the picture. The board can do that because it only lets the processor in
+    // during retrace; this core has to allow writes at any time because its
+    // processor is not cycle-exact with the original.
+    dpram256b PF_RAM(
         .clock(Clk6),
-        .address(PF_RAM_Adr),
+        .wraddress(BA[7:0]),
         .wren(PF_Wren),
-        .data(PFRAM_Din[3:0]),
-        .q(PD[3:0])
-    );
-
-
-    ram256 F6(
-        .clock(Clk6),
-        .address(PF_RAM_Adr),
-        .wren(PF_Wren),
-        .data(PFRAM_Din[7:4]),
-        .q(PD[7:4])
+        .data(PFRAM_Din),
+        .rdaddress({PVP[7:4], PHP_fetch[7:4]}),
+        .q(PD)
     );
     
     // Wren is active-low on real hardware so this is a NAND gate.
@@ -281,7 +278,7 @@ module playfield(
     // updates per-frame become vertical motion in the rotated view —
     // which is what "moving forward along the road" looks like in the
     // vertical-cabinet orientation.
-    assign PF_RAM_Adr = PfldRAM ? BA[7:0] : {PVP[7:4], PHP_fetch[7:4]};
+    // PF_RAM_Adr is no longer used; the two ports have their own addresses.
     
     // Check data bus paths carefully
     assign PFRAM_Din = (BD_en == 1'b0) ? BD : 

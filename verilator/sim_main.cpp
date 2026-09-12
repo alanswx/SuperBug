@@ -579,15 +579,10 @@ int verilate() {
 						fprintf(stderr, " %02X", root->emu__DOT__superbug__DOT__Alpha__DOT__P3_RAM__DOT__mem[i]);
 						if ((i & 15) == 15) fprintf(stderr, "\n");
 					}
-					// E6 holds the low nibble and F6 the high one, per the two
-					// ram256 instances in playfield.v. The labels here used to be
-					// the other way round, which made every dumped byte look
-					// nibble-swapped against the reference.
-					fprintf(stderr, "=== playfield RAM (F6 high nibble | E6 low nibble, 256 bytes) at frame %d ===\n", dump_ram_at_frame);
+					fprintf(stderr, "=== playfield RAM (256 bytes) at frame %d ===\n", dump_ram_at_frame);
 					for (int i = 0; i < 256; i++) {
-						uint8_t hi = root->emu__DOT__superbug__DOT__Playfield__DOT__F6__DOT__mem[i] & 0xF;
-						uint8_t lo = root->emu__DOT__superbug__DOT__Playfield__DOT__E6__DOT__mem[i] & 0xF;
-						fprintf(stderr, " %02X", (hi << 4) | lo);
+						fprintf(stderr, " %02X",
+						        root->emu__DOT__superbug__DOT__Playfield__DOT__PF_RAM__DOT__mem[i]);
 						if ((i & 15) == 15) fprintf(stderr, "\n");
 					}
 					// The 6800's scratchpad at $0000-$00FF, where all the game
