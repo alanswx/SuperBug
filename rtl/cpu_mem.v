@@ -314,11 +314,23 @@ module cpu_mem(
         .q(ROM3_Dout)
     );
     
+    // Fire Truck's program is one eight kilobyte image at $2000, where Super
+    // Bug's is three two kilobyte parts at $0800, $1000 and $1800.
+    wire [7:0] FT_ROM_Dout;
+    ROM_FT_PROG FT_PROG(
+        .clock(Clk6),
+        .address(Adr[12:0]),
+        .q(FT_ROM_Dout)
+    );
+    wire FT_ROMce_n = ~(BVMA & Adr[13]);
+
     // Program ROM mux
-    assign ROM_Dout = (ROM1ce_n == 1'b0) ? ROM1_Dout : 
+    assign ROM_Dout = firetrk ? FT_ROM_Dout :
+                      (ROM1ce_n == 1'b0) ? ROM1_Dout : 
                       (ROM2ce_n == 1'b0) ? ROM2_Dout : 
                       (ROM3ce_n == 1'b0) ? ROM3_Dout : 
                       8'hFF;
+    wire ROMce_n = firetrk ? FT_ROMce_n : (ROM1ce_n & ROM2ce_n & ROM3ce_n);
     
     // Address decoding
     
@@ -512,7 +524,7 @@ module cpu_mem(
     //end process;
     
     // CPU data in mux
-    assign CPU_Din = (ROM1ce_n == 1'b0 | ROM2ce_n == 1'b0 | ROM3ce_n == 1'b0) ? ROM_Dout : 
+    assign CPU_Din = (ROMce_n == 1'b0) ? ROM_Dout : 
                      (RAMce == 1'b1 & RW_n == 1'b1) ? RAM_Dout : 
                      (In1_n == 1'b0 | Opt_n == 1'b0) ? DBus_in : 
                      8'hFF;

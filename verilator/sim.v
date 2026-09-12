@@ -282,6 +282,16 @@ superbug superbug(
         .Game(game_select),
         .Slam_I(1'b1),
         .HSRes_I(1'b1),   // active low; unconnected reads as a held reset
+        // Fire Truck's extra panel. Inactive until its controls are mapped.
+        .Start2_I(1'b1),
+        .Start3_I(1'b1),
+        .Bell_I(1'b1),
+        .Horn_I(1'b1),
+        .Cabinet_I(1'b1),      // two player Fire Truck cabinet
+        .DiagHold_I(1'b1),
+        .DiagStep_I(1'b1),
+        .Steer_2A_I(1'b0),
+        .Steer_2B_I(1'b0),
         .Trak_Sel_I(~m_next_track),
 
         .dbg_pc(dbg_pc),

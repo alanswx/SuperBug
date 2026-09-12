@@ -104,3 +104,38 @@ module ram128 (
 endmodule
 
 `default_nettype wire
+
+// ---------------------------------------------------------------------------
+// Fire Truck ROMs. Built from the MAME set by tools/make_firetrk_hex.py.
+// The program image is 8 KB at $2000; its upper half comes from two pairs of
+// nibble-wide PROMs which that script recombines.
+// ---------------------------------------------------------------------------
+module ROM_FT_PROG (input wire clock, input wire [12:0] address, output reg [7:0] q);
+    reg [7:0] mem [0:8191];
+    initial $readmemh("../roms/hex/firetrk_prog.hex", mem);
+    always @(posedge clock) q <= mem[address];
+endmodule
+
+module ROM_FT_CHARS (input wire clock, input wire [10:0] address, output reg [7:0] q);
+    reg [7:0] mem [0:2047];
+    initial $readmemh("../roms/hex/firetrk_chars.hex", mem);
+    always @(posedge clock) q <= mem[address];
+endmodule
+
+module ROM_FT_TILES (input wire clock, input wire [10:0] address, output reg [7:0] q);
+    reg [7:0] mem [0:2047];
+    initial $readmemh("../roms/hex/firetrk_tiles.hex", mem);
+    always @(posedge clock) q <= mem[address];
+endmodule
+
+module ROM_FT_CAR (input wire clock, input wire [9:0] address, output reg [7:0] q);
+    reg [7:0] mem [0:1023];
+    initial $readmemh("../roms/hex/firetrk_car.hex", mem);
+    always @(posedge clock) q <= mem[address];
+endmodule
+
+module ROM_FT_TRAILER (input wire clock, input wire [11:0] address, output reg [7:0] q);
+    reg [7:0] mem [0:4095];
+    initial $readmemh("../roms/hex/firetrk_trailer.hex", mem);
+    always @(posedge clock) q <= mem[address];
+endmodule

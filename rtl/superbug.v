@@ -40,6 +40,15 @@ module superbug(
     Test_I,
     Slam_I,
     HSRes_I,
+    Start2_I,
+    Start3_I,
+    Bell_I,
+    Horn_I,
+    Cabinet_I,
+    DiagHold_I,
+    DiagStep_I,
+    Steer_2A_I,
+    Steer_2B_I,
     Lamp1_O,
     Lamp2_O,
     hs_O,
@@ -106,6 +115,16 @@ module superbug(
     input        Test_I;		// Self-test switch
     input        Slam_I;		// Slam switch
     input        HSRes_I;		// High score reset
+    // Fire Truck only. Super Bug ignores these; tie them inactive.
+    input        Start2_I;		// back player start (active low)
+    input        Start3_I;		// both players start (active low)
+    input        Bell_I;		// back player bell button (active low)
+    input        Horn_I;		// horn, straight to the sound, never seen by the CPU
+    input        Cabinet_I;		// 1 = two player Fire Truck, 0 = Smokey Joe
+    input        DiagHold_I;
+    input        DiagStep_I;
+    input        Steer_2A_I;	// back player wheel
+    input        Steer_2B_I;
     output       Lamp1_O;		// Start button lamp
     output       Lamp2_O;		// Track Select lamp
     output       hs_O;
@@ -342,7 +361,17 @@ module superbug(
         .CrashIn_n(CrashIn_n),
         .Adr(CPU_Adr[2:0]),
         .DBus(CPU_Din),
-        .Clk6(Clk6)
+        .Clk6(Clk6),
+        .Game(Game),
+        .VBlank(VBlank),
+        .Start2_n(Start2_I),
+        .Start3_n(Start3_I),
+        .Bell_n(Bell_I),
+        .Cabinet(Cabinet_I),
+        .DiagHold_n(DiagHold_I),
+        .DiagStep_n(DiagStep_I),
+        .Steering2A_n(Steer_2A_I),
+        .Steering2B_n(Steer_2B_I)
     );
     
     sound Sound(

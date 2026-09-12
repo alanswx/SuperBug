@@ -35,7 +35,17 @@ module Input(
     CrashIn_n,
     Adr,
     DBus,
-    Clk6
+    Clk6,
+    Game,
+    VBlank,
+    Start2_n,
+    Start3_n,
+    Bell_n,
+    Cabinet,
+    DiagHold_n,
+    DiagStep_n,
+    Steering2A_n,
+    Steering2B_n
 );
     input [7:0]  DIP_Sw;		// DIP switches
     input        Coin1_n;		// Coin switches
@@ -59,6 +69,17 @@ module Input(
     input [2:0]  Adr;		// Adress bus, only the lower 3 bits used by IO circuitry
     output [7:0] DBus;		// Out to data bus, only bits 7, 1, and 0 are actually used
     input        Clk6;
+    input [1:0]  Game;		// 0 = Super Bug, 1 = Fire Truck
+    // Fire Truck only. Super Bug ties these off.
+    input        VBlank;		// Fire Truck reads vertical blank through the port
+    input        Start2_n;		// back player start
+    input        Start3_n;		// both players start
+    input        Bell_n;		// back player's bell button
+    input        Cabinet;		// 1 = two player Fire Truck, 0 = one player Smokey Joe
+    input        DiagHold_n;
+    input        DiagStep_n;
+    input        Steering2A_n;	// back player's wheel
+    input        Steering2B_n;
     
     
     wire         Coin1;
@@ -107,6 +128,43 @@ module Input(
         end
     end
     
+    // Fire Truck has a second wheel for the back player, handled by the same
+    // pair of flip-flops as the first. Both reset strobes are the same line.
+    reg SteerDir2, SteerFlag2;
+    reg prev_Steering2B_n;
+    wire Steering2A = (~Steering2A_n);
+    always @(posedge Clk6)
+    begin: SteeringB
+        prev_Steering2B_n <= Steering2B_n;
+        if (SteerReset_n == 1'b0)
+            SteerFlag2 <= 1'b0;
+        else if (Steering2B_n & ~prev_Steering2B_n)
+        begin
+            SteerFlag2 <= 1'b1;
+            SteerDir2  <= Steering2A;
+        end
+    end
+
+    localparam GAME_FIRETRK = 2'd1;
+    wire firetrk = (Game == GAME_FIRETRK);
+
+    // Fire Truck answers on three data bits where Super Bug uses two, and
+    // assigns them differently. Order from MAME's input_r reading the BIT_0,
+    // BIT_6 and BIT_7 ports for firetrk; see docs/firetruck_port.md.
+    reg ft_bit0, ft_bit6, ft_bit7;
+    always @(*) begin
+        case (Adr[2:0])
+            3'd0: begin ft_bit0 = 1'b0;            ft_bit6 = ~Start_n;      ft_bit7 = 1'b0;          end
+            3'd1: begin ft_bit0 = ~Gas_n;          ft_bit6 = ~Start2_n;     ft_bit7 = 1'b0;          end
+            3'd2: begin ft_bit0 = SteerDir;        ft_bit6 = ~Start3_n;     ft_bit7 = ~SteerFlag;    end
+            3'd3: begin ft_bit0 = SteerDir2;       ft_bit6 = ~TrackSel_n;   ft_bit7 = ~SteerFlag2;   end
+            3'd4: begin ft_bit0 = ~Bell_n;         ft_bit6 = 1'b0;          ft_bit7 = ~Coin1_n;      end
+            3'd5: begin ft_bit0 = ~Slam_n;         ft_bit6 = VBlank;        ft_bit7 = ~Coin2_n;      end
+            3'd6: begin ft_bit0 = ~SkidIn_n;       ft_bit6 = Cabinet;       ft_bit7 = ~CrashIn_n;    end
+            3'd7: begin ft_bit0 = ~Test_n;         ft_bit6 = ~DiagHold_n;   ft_bit7 = ~DiagStep_n;   end
+        endcase
+    end
+
     // 74153 data selector/multiplexer at F9, inverting since active-low
     // output is used. This drives DBus bit 7.
     //
@@ -197,8 +255,28 @@ module Input(
     // Input data mux
     // Bits 1..6 read back as 0, not 1. MAME's input_r builds the byte from
     // just bit 0 and bit 7 for superbug and leaves the rest clear.
-    assign DBus = (In1_n == 1'b0) ? {InputMux1, 6'b000000, InputMux2} : 
-                  (Opt_n == 1'b0) ? {6'b000000, DIP_Mux} : 
-                  8'hFF;
+    // Fire Truck reads its switches in a different order and puts coinage on
+    // the first bank, at bits 2 and 3, where Super Bug leaves that bank empty
+    // and has coinage first in the second bank. The MRA byte is laid out the
+    // same for both games, so only the read order changes:
+    //   offset 0 language, 1 game time, 2 extended play, 3 unused
+    reg [1:0] ft_dip_mux;
+    always @(*) begin
+        case (Adr[1:0])
+            2'b00: ft_dip_mux = {DIP_Sw[1], DIP_Sw[0]};   // language
+            2'b01: ft_dip_mux = {DIP_Sw[5], DIP_Sw[4]};   // game time
+            2'b10: ft_dip_mux = {DIP_Sw[3], DIP_Sw[2]};   // extended play
+            2'b11: ft_dip_mux = 2'b00;
+        endcase
+    end
+    wire [7:0] ft_dip = {4'b0000, DIP_Sw[7], DIP_Sw[6], ft_dip_mux};
+
+    assign DBus = firetrk
+                ? ((In1_n == 1'b0) ? {ft_bit7, ft_bit6, 5'b00000, ft_bit0} :
+                   (Opt_n == 1'b0) ? ft_dip :
+                   8'hFF)
+                : ((In1_n == 1'b0) ? {InputMux1, 6'b000000, InputMux2} : 
+                   (Opt_n == 1'b0) ? {6'b000000, DIP_Mux} : 
+                   8'hFF);
     
 endmodule

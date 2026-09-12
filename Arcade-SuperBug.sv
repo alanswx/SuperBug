@@ -508,6 +508,16 @@ superbug superbug(
 	// Active low, and it was left unconnected before, which synthesises to a
 	// permanently asserted high-score reset.
 	.HSRes_I(1'b1),
+	// Fire Truck's extra panel. Inactive until its controls are mapped.
+	.Start2_I(1'b1),
+	.Start3_I(1'b1),
+	.Bell_I(1'b1),
+	.Horn_I(1'b1),
+	.Cabinet_I(1'b1),
+	.DiagHold_I(1'b1),
+	.DiagStep_I(1'b1),
+	.Steer_2A_I(1'b0),
+	.Steer_2B_I(1'b0),
 	.Trak_Sel_I(~m_next_track)
 
 
