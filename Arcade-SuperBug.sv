@@ -188,11 +188,9 @@ localparam CONF_STR = {
 	"O2,Orientation,Vert,Horz;",
 	"O35,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",  
 	"-;",
-	"O8,Oil Slicks,On,Off;",
-	"O9,Cycle tracks,every lap,every two laps;",
-	"OA,Extended Play,extended,normal;",
-	"OBC,Game time,150 Sec,120 Sec,90 Sec,60 Sec;",
-	"OD,Test,Off,On;",
+	"DIP;",
+	"-;",
+	"O8,Test,Off,On;",
 	"-;",
 	"R0,Reset;",
 	"J1,Gas,GearUp,GearDown,NextTrack,Start 1P,Start 2P,Coin;",
@@ -211,7 +209,15 @@ localparam CONF_STR = {
 */
 
 
-//wire [7:0] DIP_Sw = {status[8],status[9],1'b0,1'b0,status[10],1'b1,status[12:11]};
+// DIP switches arrive from the MRA, not from hand-written menu entries. The
+// MiSTer main sends them as an ioctl download with index 254, one byte per
+// switch bank, and builds the DIP page in the menu from the MRA's <switches>
+// block. Super Bug has one bank.
+//
+// Bit layout within that byte follows what Input.v's 74153 at C6 hands to the
+// program, a pair at a time: [7:6] coinage at offset 0, [5:4] game time at 1,
+// [3:2] extended play at 2, [1:0] language at 3. Super Bug.mra spells out the
+// same pairs, so the two stay in step.
 
 wire [31:0] status;
 wire  [1:0] buttons;
@@ -222,6 +228,7 @@ wire        ioctl_download;
 wire        ioctl_wr;
 wire [24:0] ioctl_addr;
 wire [7:0] ioctl_data;
+wire [15:0] ioctl_index;
 
 wire [10:0] ps2_key;
 
@@ -245,6 +252,7 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.ioctl_wr(ioctl_wr),
 	.ioctl_addr(ioctl_addr),
 	.ioctl_dout(ioctl_data),
+	.ioctl_index(ioctl_index),
 
 	.joystick_0(joystick_0),
 	.joystick_1(joystick_1),
@@ -446,7 +454,12 @@ port(
 			);
 end superbug;
 */
-	wire [7:0] DIP_Sw = 8'b10100000; //-- Config dip switches
+	reg [7:0] sw[8];
+	always @(posedge clk_sys) begin
+		if (ioctl_wr && ioctl_index == 16'd254 && !ioctl_addr[24:3])
+			sw[ioctl_addr[2:0]] <= ioctl_data;
+	end
+	wire [7:0] DIP_Sw = sw[0];
 
 superbug superbug(
 	.Clk_50_I(CLK_50M),
@@ -471,7 +484,7 @@ superbug superbug(
 	.Gear1_I(gear1),
 	.Gear2_I(gear2),
 	.Gear3_I(gear3),
-	.Test_I	(~status[13]),
+	.Test_I	(~status[8]),
 	.Steer_1A_I(steer[1]),
 	.Steer_1B_I(steer[0]),
 	.Lamp1_O(lamp),

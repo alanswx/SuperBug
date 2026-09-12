@@ -216,13 +216,14 @@ gearshift gearshift1
 );
 
 
-        // DIP byte matches MAME's superbug defaults (firetrk.cpp DIP_1):
-        //   [7:6] Coinage      = 10  (1C/1C)
-        //   [5:4] Play Time    = 01  (90 sec)
-        //   [3:2] Extended     = 10  (Medium)
+        // The FPGA build takes this byte from the MRA's <switches> block; the
+        // harness has no MRA, so it holds the same default the MRA declares.
+        // Layout, in the order Input.v's 74153 at C6 presents the pairs:
+        //   [7:6] Coinage      = 10  (1 coin 1 play)
+        //   [5:4] Game Time    = 01  (90 seconds)
+        //   [3:2] Extended     = 10  (medium)
         //   [1:0] Language     = 00  (English)
-        // dip_r() in MAME packs DIP_1 as 2 bits per offset, mirrored to the
-        // pair ordering this hardware exposes via Input.v's 74153 mux.
+        // Matches MAME's superbug defaults.
         wire [7:0] DIP_Sw = 8'b10011000;
 
 // Sim-only: superbug expects a separate 12 MHz clock for the video synchronizer.

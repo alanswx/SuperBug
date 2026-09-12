@@ -1,0 +1,44 @@
+<misterromdescription>
+    <name>Super Bug</name>
+    <setname>superbug</setname>
+    <rbf>Arcade-SuperBug</rbf>
+    <year>1977</year>
+    <manufacturer>Atari (Kee Games)</manufacturer>
+    <category>Driving</category>
+
+    <rom index="0" zip="superbug.zip" md5="none">
+        <!-- Program, $0800-$1FFF -->
+        <part name="009121.d1"/>
+        <part name="009122.c1"/>
+        <part name="009123.a1"/>
+        <!-- Alphanumeric character generator -->
+        <part name="009124.m3"/>
+        <part name="009471.n3"/>
+        <!-- Playfield tiles -->
+        <part name="009126.f5"/>
+        <part name="009472.h5"/>
+        <part name="009127.e5"/>
+        <!-- Car sprite -->
+        <part name="009125.k6"/>
+        <!-- Sync PROM -->
+        <part name="009114.prm"/>
+    </rom>
+
+    <!--
+        One bank of switches. The pairs below are in the order the 74153 at C6
+        presents them to the program: coinage first, then game time, extended
+        play and language. Each pair's low bit is listed first, so the value
+        the program reads is (second bit * 2) + (first bit).
+
+        Default 0x98 is 1 coin 1 play, 90 seconds, medium extended play,
+        English, which is what the reference driver defaults to.
+    -->
+    <switches default="98" base="16">
+        <dip name="Language"       bits="0,1" ids="English,French,Spanish,German"/>
+        <dip name="Extended Play"  bits="2,3" ids="Never,Liberal,Medium,Conservative"/>
+        <dip name="Game Time"      bits="4,5" ids="60 Seconds,90 Seconds,120 Seconds,150 Seconds"/>
+        <dip name="Coinage"        bits="6,7" ids="Free Play,1 Coin 2 Plays,1 Coin 1 Play,2 Coins 1 Play"/>
+    </switches>
+
+    <buttons names="Gas,Gear Up,Gear Down,Track Select,Start 1P,Start 2P,Coin" default="A,B,X,Y,Start,Select,R"/>
+</misterromdescription>

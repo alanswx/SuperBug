@@ -60,13 +60,16 @@ matches.
 **Still open**
 
 - 1.3 Playfield cell-edge residual, now 0.04% to 0.67% per band.
-- 1.5 The DIP switches are still hardcoded, so the four game-configuration
-  options in the menu do nothing. The coinage switch also has no path to the
-  data bus at all: the option read forces bits 2 and 3 low, where the board
-  puts coinage.
+- 1.5 Done. DIP switches now arrive from the MRA as an ioctl index 254
+  download and the menu carries a DIP page instead of four hand-written
+  entries that did nothing. `releases/Super Bug.mra` declares the four
+  switches with the same bit pairs the 74153 at C6 presents to the program.
 - 1.6 Vertical orientation on MiSTer. Still no rotation module, so on real
   hardware the game comes out sideways.
-- 1.7 ROM loading and the MRA. The download signals still go nowhere.
+- 1.7 ROM loading. The MRA exists but its `<rom index="0">` block is still
+  ignored: ROMs are baked into Altera memory initialisation files and the
+  download signals into the core go nowhere. The switches half of the MRA
+  works today; the ROM half needs the loader.
 - 1.8 Remove the debug-only scroll latches from the CPU memory module.
 - Phase 2 needs tuning against a reference recording. The screech oscillator
   currently runs near 1825 Hz where the original is nearer 1200 Hz, and the
