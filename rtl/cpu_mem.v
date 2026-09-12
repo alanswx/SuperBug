@@ -172,12 +172,26 @@ module cpu_mem(
     // Clock
     // This is a bit ugly, should rewrite
     
-    always @(posedge H2)
+    // Processor clock. The VHDL this came from toggled on the rising edge of
+    // 2H, which is one eighth of the pixel clock, or 756 kHz, and carried the
+    // comment "this is a bit ugly, should rewrite". The board runs the
+    // processor at a twelfth of the master clock, 1.008 MHz, which is a sixth
+    // of the pixel clock; 756 kHz is the slower rate the service switch
+    // selects. Running a third slow left the program short of cycles per
+    // frame and its state drifted away from the reference over a few hundred
+    // frames.
+    reg [1:0] phi_div;
+    always @(posedge Clk6)
     begin: Clock
-        if (Reset == 1'b1)
-            PHI2 <= 1'b0;
-        else
-            PHI2 <= ((~PHI2));
+        if (Reset == 1'b1) begin
+            phi_div <= 2'd0;
+            PHI2    <= 1'b0;
+        end else if (phi_div == 2'd2) begin
+            phi_div <= 2'd0;
+            PHI2    <= ((~PHI2));
+        end else begin
+            phi_div <= phi_div + 2'd1;
+        end
     end
     assign Phi1 = ((~PHI2));
     assign Legit = (~(H2 | Phi1));

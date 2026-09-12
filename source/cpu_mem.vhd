@@ -55,6 +55,7 @@ architecture rtl of CPU_mem is
 
 signal Reset			: std_logic;
 
+signal phi_div : unsigned(1 downto 0) := "00";
 signal H2				: std_logic;
 signal V16				: std_logic;
 
@@ -107,15 +108,21 @@ H2	<= HCount(1);
 V16 <= VCount(4);
 
 -- Clock
--- This is a bit ugly, should rewrite
-Clock: process(H2)
+-- Toggling on 2H gives one eighth of the pixel clock, 756 kHz, which is the
+-- slower rate the service switch selects. The board runs the processor at a
+-- twelfth of the master clock, 1.008 MHz, which is a sixth of the pixel clock.
+Clock: process(Clk6)
 begin
-  if (Reset='1') then
-     Phi2 <= '0';
-  else
-	if rising_edge(H2) then
-		Phi2 <= (not Phi2);
-	end if;
+  if rising_edge(Clk6) then
+    if (Reset='1') then
+       phi_div <= "00";
+       Phi2 <= '0';
+    elsif phi_div = "10" then
+       phi_div <= "00";
+       Phi2 <= (not Phi2);
+    else
+       phi_div <= phi_div + 1;
+    end if;
   end if;
 end process;
 Phi1 <= (not Phi2);
