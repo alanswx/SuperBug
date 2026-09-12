@@ -140,6 +140,10 @@ bool switch_pc_trace = false;
 // range, so the executed code can be set-compared against the same range
 // captured from MAME.
 int code_trace_lo = -1, code_trace_hi = -1;
+// --watch-read ADDR FROM TO: print every read of one address between two
+// frames, with the program counter and the byte returned.
+int watch_addr = -1, watch_from = 0, watch_to = 0;
+static int watch_prev_match = 0;
 static std::set<uint32_t> code_seen;
 static std::set<uint32_t> switch_pc_seen;
 static std::vector<int16_t> audio_samples;
@@ -439,6 +443,15 @@ int verilate() {
 			uint32_t colour = 0xFF000000 | top->VGA_B << 16 | top->VGA_G << 8 | top->VGA_R;
 			static int prev_frame = 0;
 			video.Clock(top->VGA_HB, top->VGA_VB, top->VGA_HS, top->VGA_VS, colour);
+			if (watch_addr >= 0 && video.count_frame >= watch_from &&
+			    video.count_frame <= watch_to) {
+				int match = (top->dbg_addr == (unsigned)watch_addr);
+				if (match && !watch_prev_match)
+					fprintf(stderr, "[watch] frame=%d addr=%04X PC=%04X data=%02X\n",
+					        video.count_frame, watch_addr,
+					        (unsigned)top->dbg_pc, (unsigned)top->dbg_din);
+				watch_prev_match = match;
+			}
 			if (code_trace_lo >= 0) {
 				uint32_t a = top->dbg_addr;
 				if ((int)a >= code_trace_lo && (int)a <= code_trace_hi)
@@ -620,6 +633,10 @@ int main(int argc, char** argv, char** env) {
 		} else if (!strcmp(argv[i], "--code-trace") && i + 2 < argc) {
 			code_trace_lo = (int)strtol(argv[++i], nullptr, 0);
 			code_trace_hi = (int)strtol(argv[++i], nullptr, 0);
+		} else if (!strcmp(argv[i], "--watch-read") && i + 3 < argc) {
+			watch_addr = (int)strtol(argv[++i], nullptr, 0);
+			watch_from = atoi(argv[++i]);
+			watch_to   = atoi(argv[++i]);
 		} else if (!strcmp(argv[i], "--switch-pc-trace")) {
 			switch_pc_trace = true;
 		} else if (!strcmp(argv[i], "--service")) {

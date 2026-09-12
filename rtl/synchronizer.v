@@ -125,10 +125,31 @@ module synchronizer(
     // value as a clean clock-enable instead of the multi-flop hsync_int
     // (which can race).
     wire ce_line = (h_counter == 10'd336);
+    // The frame is 262 scanlines, not 256. MAME's screen for this board is
+    // set_raw(..., 262, 0, 240) and its scanline interrupt callback runs over
+    // 0..261, so an eight-bit counter that simply wraps runs the program about
+    // two percent fast and gives it fewer CPU cycles per frame than the real
+    // board. Hold the counter at its last value for the six extra lines, all
+    // of which fall inside vertical blanking, so every V decode downstream
+    // still sees a plain eight-bit count.
+    reg [2:0] v_extra;
     always @(posedge clk_12)
     begin: V_count
-        if (vreset_n == 1'b0)     v_counter <= 8'b0;
-        else if (ce_line)         v_counter <= v_counter + 1'b1;
+        if (vreset_n == 1'b0) begin
+            v_counter <= 8'b0;
+            v_extra   <= 3'd0;
+        end else if (ce_line) begin
+            if (v_counter == 8'd255) begin
+                if (v_extra == 3'd5) begin
+                    v_extra   <= 3'd0;
+                    v_counter <= 8'd0;
+                end else begin
+                    v_extra <= v_extra + 3'd1;
+                end
+            end else begin
+                v_counter <= v_counter + 1'b1;
+            end
+        end
     end
     
     // Many Atari raster games use a 256 x 4 bit prom to decode vertical sync signals

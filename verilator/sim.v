@@ -177,9 +177,11 @@ wire m_next_track	=  btn_nexttrack | joy[7];
 // Start 1P button.
 wire m_start1 = btn_one_player  | joy[8];
 wire m_start2 = btn_two_players | joy[9];
-// Pressing start also drops a coin, which is this core's long-standing
-// convenience. The explicit coin button works on its own too.
-wire m_coin   = m_start1 | m_start2 | joy[10];
+// Coin must be its own button. Wiring start into the coin line looks like a
+// coin held down for as long as start is held, and the interrupt handler
+// checks the coin switch before the start switch and exits as soon as it sees
+// one, so the start check was never reached and a game could never begin.
+wire m_coin   = joy[10];
 
 
 
