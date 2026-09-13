@@ -75,8 +75,12 @@ module car(
     wire [9:0]   CarROM_Adr;
     wire [3:0]   CarROM_Dout;
     wire         CarEna_n;
-    reg          R1;
-    reg          R0;
+    // The rotation register, exposed so the simulation harness can force it.
+    // The game reaches only one of its thirty-two values in ordinary play, so
+    // the rest are otherwise impossible to exercise. The attribute is a
+    // comment to every other tool.
+    reg          R1 /*verilator public_flat*/;
+    reg          R0 /*verilator public_flat*/;
     
     wire         CV16;
     wire         CV8;
@@ -105,9 +109,9 @@ module car(
     reg          M7Qa;
     reg          M7Qb;
     
-    reg          BD2_Sel;
-    reg          BD3_Sel;
-    reg          BD4_Sel;
+    reg          BD2_Sel /*verilator public_flat*/;
+    reg          BD3_Sel /*verilator public_flat*/;
+    reg          BD4_Sel /*verilator public_flat*/;
     
     wire [1:0]   R_Sel;
     
@@ -170,7 +174,20 @@ module car(
         .q(ft_car_dout),
         .dn_addr(dn_addr), .dn_data(dn_data), .dn_wr(dn_wr), .dn_clk(dn_clk), .dn_base(17'h3000)
     );
-    wire ft_pixel = ft_car_dout[3 - CH[1:0]];
+    // The ROM output is a cycle behind its address, so the nibble index has to
+    // be held by the same cycle or it indexes the previous byte.
+    //
+    // With the transpose bit clear CH comes from the vertical counter and does
+    // not change across a scanline, so using it live looks right and every one
+    // of those sixteen rotations matches the reference exactly. With the
+    // transpose bit set CH comes from the horizontal counter and steps every
+    // pixel, so the index ran a pixel ahead of the byte it was indexing and
+    // one pixel in four came from the wrong nibble. That is the garbled cab
+    // seen whenever the truck turns far enough to select the transposed
+    // layout, and it cost about ten percent of the sprite.
+    reg [1:0] ft_nibble_d;
+    always @(posedge Clk6) ft_nibble_d <= CH[1:0];
+    wire ft_pixel = ft_car_dout[3 - ft_nibble_d];
 
     // Frame-select index.
     //

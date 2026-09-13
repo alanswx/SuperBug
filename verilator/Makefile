@@ -90,6 +90,12 @@ $(EXE): $(VOUT) $(C_SRC)
 loader:
 	$(MAKE) V_DEFINE='$(V_DEFINE) +define+ROM_FROM_LOADER=1'
 
+# The car sprite has no target here. Its ROM reads are clocked from the raw
+# 50 MHz board input rather than the pixel clock, and a standalone testbench
+# does not reproduce that ordering, so a bench built this way disagrees with
+# the core even where the core is provably right. Sweep it through the whole
+# system instead, against the reference: tools/sprite_sweep.sh
+#
 # Exhaustive check of the trailer picture generator against the trailer ROM,
 # decoded the way the reference driver's gfx layout says it should be. Walks all
 # eight rotation frames with both flip bits in each combination and requires an

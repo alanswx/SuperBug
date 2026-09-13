@@ -204,6 +204,13 @@ bool service_mode = false;  // --service: hold the self-test switch active
 // MRA; the harness has no MRA so it is a command line option.
 int game_select = 0;
 
+// --car-rot forces the car sprite's rotation register every clock, overriding
+// what the program writes. Ordinary play only ever reaches one of its
+// thirty-two values, so without this the other thirty-one cannot be seen at
+// all, let alone compared against the reference's own decode of the ROM.
+int forced_car_rot = -1;
+int forced_drone_rot = -1, forced_drone_x = -1, forced_drone_y = -1;
+
 // --input: a scripted button timeline, so gameplay can be exercised in batch
 // mode. Without it only attract mode is reachable and the car never leaves its
 // resting rotation, which makes the sprite path impossible to verify.
@@ -436,6 +443,25 @@ int verilate() {
 				bus.BeforeEval();
 			}
 			top->eval();
+			if (forced_car_rot >= 0) {
+				// Hold the rotation register at the requested value. The
+				// program rewrites it every vertical blank, so this has to be
+				// reapplied every clock rather than poked once.
+				auto* r = top->rootp;
+				r->emu__DOT__superbug__DOT__Car__DOT__R0      = (forced_car_rot >> 0) & 1;
+				r->emu__DOT__superbug__DOT__Car__DOT__R1      = (forced_car_rot >> 1) & 1;
+				r->emu__DOT__superbug__DOT__Car__DOT__BD2_Sel = (forced_car_rot >> 2) & 1;
+				r->emu__DOT__superbug__DOT__Car__DOT__BD3_Sel = (forced_car_rot >> 3) & 1;
+				r->emu__DOT__superbug__DOT__Car__DOT__BD4_Sel = (forced_car_rot >> 4) & 1;
+				top->eval();
+			}
+			if (forced_drone_rot >= 0 || forced_drone_x >= 0 || forced_drone_y >= 0) {
+				auto* r = top->rootp;
+				if (forced_drone_rot >= 0) r->emu__DOT__superbug__DOT__Trailer__DOT__drone_rot = forced_drone_rot;
+				if (forced_drone_x   >= 0) r->emu__DOT__superbug__DOT__Trailer__DOT__drone_x   = forced_drone_x;
+				if (forced_drone_y   >= 0) r->emu__DOT__superbug__DOT__Trailer__DOT__drone_y   = forced_drone_y;
+				top->eval();
+			}
 			if (clk_sys.clk) { bus.AfterEval(); blockdevice.AfterEval(); }
 
 			// CPU instruction trace: emit one line per *opcode latch* event,
@@ -672,6 +698,14 @@ int main(int argc, char** argv, char** env) {
 			parse_screenshot_frames(argv[++i]);
 		} else if (!strcmp(argv[i], "--screenshot-name") && i + 1 < argc) {
 			screenshot_name_override = argv[++i];
+		} else if (!strcmp(argv[i], "--car-rot") && i + 1 < argc) {
+			forced_car_rot = atoi(argv[++i]) & 31;
+		} else if (!strcmp(argv[i], "--drone-rot") && i + 1 < argc) {
+			forced_drone_rot = atoi(argv[++i]) & 31;
+		} else if (!strcmp(argv[i], "--drone-x") && i + 1 < argc) {
+			forced_drone_x = atoi(argv[++i]) & 255;
+		} else if (!strcmp(argv[i], "--drone-y") && i + 1 < argc) {
+			forced_drone_y = atoi(argv[++i]) & 255;
 		} else if (!strcmp(argv[i], "--screenshot-dir") && i + 1 < argc) {
 			screenshot_dir = argv[++i];
 		} else if (!strcmp(argv[i], "--stop-at-frame") && i + 1 < argc) {
@@ -711,6 +745,10 @@ int main(int argc, char** argv, char** env) {
 			       "  --screenshot <frames>     comma-separated frame numbers\n"
 			       "  --screenshot-name <path>  override output path (single shot)\n"
 			       "  --screenshot-dir <dir>    one PNG per frame into <dir>\n"
+	       "  --car-rot <0-31>          force the car rotation register\n"
+	       "  --drone-rot <0-31>        force the trailer rotation register\n"
+	       "  --drone-x <0-255>         force the trailer horizontal position\n"
+	       "  --drone-y <0-255>         force the trailer vertical position\n"
 			       "  --audio-wav <path>        capture audio to a 44.1 kHz WAV\n"
 			       "  --input <script>          scripted buttons, e.g.\n"
 			       "                            \"60:coin, 90:start, 120-900:gas\"\n"

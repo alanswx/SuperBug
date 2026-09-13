@@ -32,8 +32,14 @@ module trailer(
     localparam GAME_FIRETRK = 2'd1;
     wire firetrk = (Game == GAME_FIRETRK);
 
-    reg [7:0] drone_x, drone_y;
-    reg [4:0] drone_rot;
+    // Exposed so the simulation harness can force them. The game holds the
+    // trailer at one rotation for almost all of a run, and turning the back
+    // wheel far enough to move it jackknifes and ends the game, so these are
+    // otherwise impossible to sweep. The attribute is a comment to every
+    // other tool.
+    reg [7:0] drone_x /*verilator public_flat*/;
+    reg [7:0] drone_y /*verilator public_flat*/;
+    reg [4:0] drone_rot /*verilator public_flat*/;
 
     reg prev_x_n, prev_y_n, prev_rot_n;
     always @(posedge Clk6) begin

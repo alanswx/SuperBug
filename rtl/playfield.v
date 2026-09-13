@@ -461,7 +461,30 @@ module playfield(
     // bit — that's the empty-road tile. For palette 3 (PCC1=PCC2=1)
     // bit=0 gives WHITE (lane markers), bit=1 stays BLACK. Matches
     // firetrk_state::palette()'s colortable_source for tilemap[0].
-    assign Pf = ~(VidShift[0] | PfWndo_n);
+    // Four of those 240 columns are ones the reference never draws. Its clip
+    // rectangle starts at x=42; this window starts at x=38, and every column
+    // from 42 rightward lines up with the reference exactly, right edge
+    // included, so the whole difference is that leading sliver. In ordinary
+    // play it shows scenery in the gap between the playfield and the score
+    // line, which is what it looks like on screen: a thin dashed line under
+    // the score that comes and goes as the scenery scrolls past.
+    //
+    // The window latch only updates on 8H, so it cannot place an edge at 42
+    // on its own; hold the video off for the first four pixels after it opens
+    // instead. See the note above on why the latch keeps its schematic form.
+    // The screen is rotated, so the window's opening edge is the bottom of the
+    // displayed picture and its closing edge the top: the four columns to drop
+    // are the last four it produces, not the first.
+    localparam [7:0] WNDO_WIDTH = 8'd240;   // what the latch above produces
+    localparam [7:0] WNDO_KEEP  = 8'd236;   // what the reference draws
+    reg [7:0] wndo_age;
+    always @(posedge Clk6) begin: WindowLead
+        if (!PfWndo)                      wndo_age <= 8'd0;
+        else if (wndo_age != WNDO_WIDTH)  wndo_age <= wndo_age + 8'd1;
+    end
+    wire wndo_open = (wndo_age < WNDO_KEEP);
+
+    assign Pf = ~(VidShift[0] | PfWndo_n) & wndo_open;
     assign LoadPd = (PHP[0] & PHP[1]);
     
     // L9 — PfWndo D-FF.

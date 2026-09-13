@@ -141,6 +141,22 @@ rotation frames with both flip bits in every combination and requires each one
 to match the trailer ROM exactly. The game itself cannot be driven into most of
 those states, so this is the only way they get covered.
 
+`tools/sprite_sweep.sh` does the same job through the whole core, against the
+reference, for the three vehicle sprites:
+
+```sh
+tools/sprite_sweep.sh firetruck-car       # Fire Truck's cab
+tools/sprite_sweep.sh firetruck-trailer   # Fire Truck's trailer
+tools/sprite_sweep.sh superbug-car        # Super Bug's car
+```
+
+Each walks the rotation register through all thirty-two values and requires the
+sprite to match exactly. Ordinary play reaches only one or two of them, so a
+gameplay capture covers almost none of this. Forcing the register needs
+`--car-rot` and `--drone-rot` in the harness, and on the reference side it needs
+the store instructions blanked, because the program rewrites those registers
+every vertical blank.
+
 ### GHDL simulation (legacy VHDL)
 
 From `sim/`: edit `run.sh` so `GHDL` points at your local GHDL build, then
