@@ -55,7 +55,7 @@ V_SRC = \
 	../verilog/enginesound.v \
 	../verilog/cpu68.v  ../verilog/prom.v \
 	../gearshift.sv  ../joy2quad.sv \
-	sim_roms.v
+	../rtl/memories.v
 
 
 

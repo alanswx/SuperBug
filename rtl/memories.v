@@ -1,7 +1,18 @@
-// Portable simulation models for Super Bug ROMs and small RAMs.
-// These replace the Altera altsyncram-based modules in ../verilog/ for Verilator.
-// All clocked on `clock` rising edge with one cycle of read latency, matching
-// the altsyncram CLOCK0 outdata register the original modules used.
+// Memories for Atari Super Bug and Fire Truck.
+//
+// One file for both builds. The ROMs are inferred block RAM with a write port
+// for the loader, so the packed image an MRA produces can be written into them
+// the way it is on hardware; they used to be Altera megafunctions initialised
+// from .mif files, which a loader cannot write.
+//
+// Under simulation they also preload from the .hex images so the core can be
+// run without feeding it a ROM. Build with ROM_FROM_LOADER to leave them empty
+// and prove the loader end to end. On the FPGA there is no preload: the image
+// always arrives from the MRA.
+//
+// Read port runs on the pixel clock, write port on the system clock. The
+// download presents a byte per system clock, which is twice the pixel rate, so
+// one clock for both would drop every other byte.
 
 `default_nettype none
 
