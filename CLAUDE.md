@@ -12,7 +12,7 @@ These three trees implement the *same* hardware. Be aware which one you are touc
 
 - `source/` — original **VHDL** core (`SuperBug.vhd`, `cpu68.vhd`, `playfield.vhd`, `car.vhd`, `alphanumerics.vhd`, `inputs.vhd`, `mixer.vhd`, `screech.vhd`, `motor.vhd`, `sync.vhd`, `cpu_mem.vhd`, `deltasigma.vhd`, …). Used by the GHDL simulation in `sim/` and historically by Quartus.
 - `verilog/` — **auto-translated Verilog** of selected VHDL modules (`cpu68.v`, `deltasigma.v`, `enginesound.v`, `input.v`, `tire_screech.v`, `prom.v`, `ram128.v`, `ram256.v`, `k6_rom.v`, `jk_ff_vhdl.v`). Translation config lives in `verilog/translate.xop` (X-HDL/Verific tool). Do not hand-edit translated files unless you also update the source VHDL or the translation will overwrite your changes; prefer fixing the VHDL or moving the file out of the auto-translation set.
-- `rtl/` — **hand-written / curated Verilog** that is the live target. `rtl/superbug.v` is the system top; submodules are `car.v`, `playfield.v`, `alpha_numerics.v`, `cpu_mem.v`, `Input.v`, `mixer.v`, `synchronizer.v`, plus `pll.v`. This is what `Arcade-SuperBug.sv` and the Verilator harness instantiate.
+- `rtl/` — **hand-written / curated Verilog** that is the live target. `rtl/superbug.v` is the system top; submodules are `car.v`, `playfield.v`, `alpha_numerics.v`, `cpu_mem.v`, `Input.v`, `mixer.v`, `synchronizer.v`, `sound.v`, `trailer.v` and `memories.v`, plus `pll.v`. This is what `Arcade-SuperBug.sv` and the Verilator harness instantiate.
 
 `Arcade-SuperBug.sv` is the **MiSTer top-level** (`module emu`). It wires `rtl/superbug.v` to the MiSTer framework (`sys/`, `hps_io`, video mixer, audio, scandoubler, arcade ROM loader, joystick → `joy2quad.sv` → quadrature steering, `gearshift.sv`).
 
@@ -30,7 +30,7 @@ make            # builds ./obj_dir/Vemu
 make fast       # rebuild C++ with aggressive GCC flags
 make clean
 ```
-The harness compiles `sim.v` + `rtl/*.v` together with `sim_main.cpp` and the ImGui/SDL2 frontend in `verilator/sim/`. Requires `verilator`, `sdl2` (`sdl2-config` on PATH), and an OpenGL toolchain. Run `./obj_dir/Vemu` for the interactive sim. `verilate.sh` is an alternate one-shot script (currently using a different file set — Makefile is the source of truth).
+The harness compiles `sim.v` + `rtl/*.v` together with `sim_main.cpp` and the ImGui/SDL2 frontend in `verilator/sim/`. Requires `verilator`, `sdl2` (`sdl2-config` on PATH), and an OpenGL toolchain. Run `./obj_dir/Vemu` for the interactive sim.
 
 ### GHDL simulation (legacy VHDL)
 From `sim/`: edit `run.sh` so `GHDL` points at your local GHDL build, then `./run.sh` to elaborate `top` (uses `sprint_sim.vhd` + `ghdl_access.{c,vhdl}` + SDL2). Run with `./top --vcd=out.vcd --assert-level=none --ieee-asserts=disable` or `./top --trace-signals` for full signal dump. `./clean.sh` wipes build artifacts.

@@ -47,8 +47,9 @@ be aware of which one you're touching:
 - **`rtl/`** — hand-written / curated Verilog that is the live target.
   `rtl/superbug.v` is the system top; submodules are `car.v`,
   `playfield.v`, `alpha_numerics.v`, `cpu_mem.v`, `Input.v`, `mixer.v`,
-  `synchronizer.v`, plus `pll.v`. This is what `Arcade-SuperBug.sv` and
-  the Verilator harness instantiate.
+  `synchronizer.v`, `sound.v`, `trailer.v` and `memories.v`, plus
+  `pll.v`. This is what `Arcade-SuperBug.sv` and the Verilator harness
+  instantiate.
 
 `Arcade-SuperBug.sv` is the **MiSTer top-level** (`module emu`). It wires
 `rtl/superbug.v` to the MiSTer framework (`sys/`, `hps_io`, video mixer,
@@ -123,9 +124,6 @@ of the ROMs being built into the simulation, which is what hardware does.
 Pass `--game 1` for Fire Truck, which shares the same core. It has no gears, so
 those two buttons carry the horn and the bell instead, and the second pad's
 left and right drive the back player's wheel.
-
-`verilate.sh` is an alternate one-shot script (currently using a different
-file set — Makefile is the source of truth).
 
 ### GHDL simulation (legacy VHDL)
 
