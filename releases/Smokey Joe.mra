@@ -1,0 +1,39 @@
+<misterromdescription>
+    <name>Smokey Joe</name>
+    <setname>firetrka</setname>
+    <rbf>Arcade-SuperBug</rbf>
+    <year>1978</year>
+    <manufacturer>Atari</manufacturer>
+    <category>Driving</category>
+
+    <!--
+        The one player cabinet. Same board and same ROMs as Fire Truck, with a
+        strap on the cabinet input the program reads to decide whether there is
+        a back player. Bit 0 of this byte selects Fire Truck, bit 2 the Smokey
+        Joe cabinet.
+    -->
+    <rom index="1"><part>05</part></rom>
+
+    <rom index="0" zip="firetrka.zip" md5="none">
+        <part name="032823-02.c1"  crc="9570bdd3"/>
+        <part name="032824-01.d1"  crc="a5fc5629"/>
+        <part name="032825-02.bin" crc="fa6f050f"/>
+        <part name="032826-02.bin" crc="e9080179"/>
+        <part name="032827-01.r3"  crc="cca31d2b"/>
+        <part name="032828-02.f5"  crc="68ef5f19"/>
+        <part name="032831-01.p7"  crc="bb8d144f"/>
+        <part name="032829-01.j5"  crc="e7267d71"/>
+        <part name="032830-01.l5"  crc="e4d8b685"/>
+        <part name="009114.prm"    crc="b8094b4c"/>
+    </rom>
+
+    <switches default="98" base="16">
+        <dip name="Language"      bits="0,1" ids="English,French,Spanish,German"/>
+        <dip name="Extended Play" bits="2,3" ids="Never,Liberal,Medium,Conservative"/>
+        <dip name="Game Time"     bits="4,5" ids="60 Seconds,90 Seconds,120 Seconds,150 Seconds"/>
+        <dip name="Coinage"       bits="6,7" ids="Free Play,1 Coin 2 Plays,1 Coin 1 Play,2 Coins 1 Play"/>
+    </switches>
+
+    <buttons names="Gas,Horn,Bell,Track Select,Start,Start Back,Coin,Start Both"
+             default="A,B,X,Y,Start,Select,R,L"/>
+</misterromdescription>

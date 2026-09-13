@@ -527,7 +527,9 @@ superbug superbug(
 	.Start3_I(~m_start3),
 	.Bell_I(~m_geardown),
 	.Horn_I(~m_gearup),
-	.Cabinet_I(1'b1),
+	// Bit 2 of the MRA's game byte picks the cabinet: clear is the two
+	// player Fire Truck, set is the one player Smokey Joe.
+	.Cabinet_I(~mod_game[2]),
 	.DiagHold_I(1'b1),
 	.DiagStep_I(1'b1),
 	.Steer_2A_I(steer2[1]),

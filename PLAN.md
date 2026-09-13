@@ -174,8 +174,10 @@ boot-timing difference, not a rendering one.
   horn and the bell, the second pad's left and right drive the back player's
   wheel, and there is a button for the both-players start.
 
-  Still open for Fire Truck: the cabinet type switch, fixed at the two-player
-  Fire Truck cabinet rather than Smokey Joe, and the diagnostic buttons.
+  The cabinet type is selectable. Bit 2 of the MRA's game byte picks between
+  the two player Fire Truck cabinet and the one player Smokey Joe, and
+  releases/Smokey Joe.mra ships it. The diagnostic hold and step buttons are
+  tied inactive, which is correct for normal play.
 
   Sound is now compared against recordings of the reference, which can write a
   WAV of a session. tools/wavcompare.py scores two recordings by how the energy

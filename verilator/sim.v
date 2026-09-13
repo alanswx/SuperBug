@@ -88,7 +88,7 @@ module emu (
 	output	[15:0]	dbg_in_count,
 	
 	input			service_mode,	// 1 = self-test (Test_I active-low low)
-	input	[1:0]	game_select,	// 0 = Super Bug, 1 = Fire Truck
+	input	[2:0]	game_select,	// [1:0] 0 Super Bug, 1 Fire Truck; [2] Smokey Joe cabinet
 	input			ioctl_download,
 	input			ioctl_wr,
 	input [24:0]		ioctl_addr,
@@ -295,7 +295,7 @@ superbug superbug(
         .vblank_O(vblank),
         .clk_6_O(clk_6),
         .DIP_Sw(DIP_Sw),
-        .Game(game_select),
+        .Game(game_select[1:0]),
         .Slam_I(1'b1),
         .HSRes_I(1'b1),   // active low; unconnected reads as a held reset
         // Fire Truck's panel. It has no gears, so those two buttons carry the
@@ -304,7 +304,8 @@ superbug superbug(
         .Start3_I(~m_start3),
         .Bell_I(~m_geardown),
         .Horn_I(~m_gearup),
-        .Cabinet_I(1'b1),      // two player Fire Truck cabinet
+        // 1 is the two player Fire Truck cabinet, 0 the one player Smokey Joe
+        .Cabinet_I(~game_select[2]),
         .DiagHold_I(1'b1),
         .DiagStep_I(1'b1),
         .Steer_2A_I(steer2[1]),
