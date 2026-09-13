@@ -296,6 +296,7 @@ module sound(
 
     assign dbg_state = {asr_en, skid_en, crash_level, speed_data};
 
+`ifdef SIMULATION
     reg [7:0] n_motor, n_crash, n_skid_set, n_skid_clr;
     always @(posedge Clk6) begin
         if (!Reset_n) begin
@@ -315,6 +316,9 @@ module sound(
         if (crash_wr) last_crash_byte <= BD;
     end
     assign dbg_strobes = {last_crash_byte, last_motor_byte, n_crash, n_motor};
+`else
+    assign dbg_strobes = 32'd0;
+`endif
 
 endmodule
 

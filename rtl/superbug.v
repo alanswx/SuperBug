@@ -441,6 +441,7 @@ module superbug(
     // the whole port can be compared against MAME in one line. Done here
     // rather than inside the Input module: adding a clocked block in there
     // disturbed how the simulator scheduled its combinational muxes.
+`ifdef SIMULATION
     reg [7:0]  dbg_in_bit7, dbg_in_bit0;
     reg [15:0] dbg_in_reads;
     always @(posedge Clk6) begin
@@ -454,6 +455,10 @@ module superbug(
     end
     assign dbg_inputs = {dbg_in_bit7, dbg_in_bit0};
     assign dbg_in_count = dbg_in_reads;
+`else
+    assign dbg_inputs = 16'd0;
+    assign dbg_in_count = 16'd0;
+`endif
 
     assign dbg_hcount = HCount;
     assign dbg_pfwndo = PFWndo;

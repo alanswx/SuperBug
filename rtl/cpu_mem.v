@@ -452,6 +452,7 @@ module cpu_mem(
     assign PVP_Load_n = (IO_Wr & grp_lo & Adr[7:5] == 3'b000) ? 1'b0 : 1'b1;
     assign PHP_Load_n = (IO_Wr & grp_lo & Adr[7:5] == 3'b001) ? 1'b0 : 1'b1;
 
+`ifdef SIMULATION
     // Debug-only: latch the most recent scroll_x / scroll_y the CPU
     // wrote so the harness can compare directly with MAME's stored
     // m_scroll_x/m_scroll_y at any frame. Hardware doesn't keep these —
@@ -474,6 +475,8 @@ module cpu_mem(
         if (PHP_Load_n_prev && ~PHP_Load_n) scroll_x_writes <= scroll_x_writes + 1;
         if (PVP_Load_n_prev && ~PVP_Load_n) scroll_y_writes <= scroll_y_writes + 1;
     end
+`endif
+
     assign CrashReset_n = (IO_Wr & grp_lo & Adr[7:5] == 3'b010) ? 1'b0 : 1'b1;
     assign SkidReset_n = (IO_Wr & grp_lo & Adr[7:5] == 3'b011) ? 1'b0 : 1'b1;
     assign CarRot_n = (IO_Wr & grp_lo & Adr[7:5] == 3'b100) ? 1'b0 : 1'b1;
