@@ -235,6 +235,15 @@ wire [10:0] ps2_key;
 wire [15:0] joystick_0, joystick_1;
 wire [15:0] joy  = joystick_0 | joystick_1;
 wire [15:0] joy2 = joystick_1;      // back player, for Fire Truck's second wheel
+
+// Which game this MRA is for. The MiSTer main sends it as a one byte download
+// at index 1, which is how a multi-game core picks its variant.
+// 0 is Super Bug, 1 is Fire Truck, and bit 2 selects the Smokey Joe cabinet.
+reg [7:0] mod_game = 8'd0;
+always @(posedge clk_sys) begin
+	if (ioctl_wr && ioctl_index == 16'd1) mod_game <= ioctl_data;
+end
+wire       ft_cabinet = (mod_game[1:0] == 2'd1);   // Fire Truck or Smokey Joe
 wire [21:0] gamma_bus;
 
 hps_io #(.CONF_STR(CONF_STR)) hps_io
@@ -308,8 +317,14 @@ reg btn_coin_2=0;
 
 //wire m_up     =  btn_up    | joy[3];
 //wire m_down   =  btn_down  | joy[2];
-wire m_left     =  btn_left   | joy[1];
-wire m_right    =  btn_right  | joy[0];
+// Fire Truck is a two-wheel cabinet: the front player steers the cab and the
+// back player steers the trailer, so the second pad must drive steer2gen only.
+// Taking the front wheel from `joy`, which is both pads ORed together, made
+// the back player's wheel turn the cab as well, and the two wheels could never
+// be worked against each other the way the game is played. Super Bug has one
+// wheel, so there either pad still steers.
+wire m_left     =  btn_left   | (ft_cabinet ? joystick_0[1] : joy[1]);
+wire m_right    =  btn_right  | (ft_cabinet ? joystick_0[0] : joy[0]);
 wire m_gas      =  btn_gas    | joy[4];
 wire m_gearup   =  btn_gearup |joy[5];
 wire m_geardown =  btn_geardown | joy[6];
@@ -473,14 +488,6 @@ end superbug;
 			sw[ioctl_addr[2:0]] <= ioctl_data;
 	end
 	wire [7:0] DIP_Sw = sw[0];
-
-	// Which game this MRA is for. The MiSTer main sends it as a one byte
-	// download at index 1, which is how a multi-game core picks its variant.
-	// 0 is Super Bug, 1 is Fire Truck.
-	reg [7:0] mod_game = 8'd0;
-	always @(posedge clk_sys) begin
-		if (ioctl_wr && ioctl_index == 16'd1) mod_game <= ioctl_data;
-	end
 
 superbug superbug(
 	.Clk_50_I(CLK_50M),

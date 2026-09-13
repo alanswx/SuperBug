@@ -71,3 +71,6 @@ __pycache__/
 
 # Packed ROM images, rebuilt from the MRAs by tools/mra.py
 *.rom
+
+# Trailer picture generator test build
+verilator/obj_tb/

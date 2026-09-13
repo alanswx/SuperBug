@@ -166,8 +166,14 @@ reg btn_start_1=0;
 reg btn_coin_1=0;
 reg btn_coin_2=0;
 
-wire m_left     =  btn_left   | joy[1];
-wire m_right    =  btn_right  | joy[0];
+// Fire Truck is a two-wheel cabinet: the front player steers the cab and the
+// back player steers the trailer, so the second pad must drive steer2gen only.
+// Taking the front wheel from `joy`, which is both pads ORed together, made the
+// back player's wheel turn the cab as well. Super Bug has one wheel, so there
+// either pad still steers.
+wire ft_cabinet = (game_select[1:0] == 2'd1);
+wire m_left     =  btn_left   | (ft_cabinet ? joystick_0[1] : joy[1]);
+wire m_right    =  btn_right  | (ft_cabinet ? joystick_0[0] : joy[0]);
 wire m_gas      =  btn_gas    | joy[4];
 wire m_gearup   =  btn_gearup |joy[5];
 wire m_geardown =  btn_geardown | joy[6];

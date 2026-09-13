@@ -230,8 +230,24 @@ static uint32_t button_mask(const std::string& name) {
 	// Fire Truck has no gears, so those two carry the horn and the bell.
 	if (name == "horn")      return 1u << 5;
 	if (name == "bell")      return 1u << 6;
+	// Fire Truck's back player has a wheel of his own. These two ride on bits
+	// the core never reads from pad one, and are routed to joystick_1 below,
+	// so a script can work the two wheels against each other.
+	if (name == "left2")     return 1u << 12;
+	if (name == "right2")    return 1u << 13;
 	fprintf(stderr, "--input: unknown button '%s'\n", name.c_str());
 	return 0;
+}
+
+// joystick_1 is the back player's pad. Only its steering bits matter, and they
+// have to be the low two so joy2quad sees them, so lift them off the private
+// left2/right2 bits. Everything else is passed through, which keeps the second
+// pad usable for the shared buttons the way MiSTer cores normally allow.
+static uint32_t back_wheel(uint32_t j0) {
+	uint32_t out = j0 & ~0x3u;            // never steer player one from pad two
+	if (j0 & (1u << 13)) out |= 1u << 0;  // right2
+	if (j0 & (1u << 12)) out |= 1u << 1;  // left2
+	return out;
 }
 
 static void parse_input_script(const char* spec) {
@@ -824,7 +840,7 @@ int main(int argc, char** argv, char** env) {
 			for (int step = 0; step < batchSize; step++) {
 				top->service_mode = service_mode ? 1 : 0;
 				top->joystick_0 = scripted_buttons(video.count_frame);
-				top->joystick_1 = top->joystick_0;
+				top->joystick_1 = back_wheel(top->joystick_0);
 				verilate();
 			}
 		}
@@ -990,7 +1006,7 @@ fprintf(stderr,"filePath: %s\n",filePath.c_str());
 		}
 		top->game_select = game_select;
 		top->joystick_0 |= scripted_buttons(video.count_frame);
-		top->joystick_1 = top->joystick_0;
+		top->joystick_1 = back_wheel(top->joystick_0);
 		top->service_mode = service_mode ? 1 : 0;
 
 		/*top->joystick_analog_0 += 1;

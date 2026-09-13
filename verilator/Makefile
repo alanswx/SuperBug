@@ -90,8 +90,21 @@ $(EXE): $(VOUT) $(C_SRC)
 loader:
 	$(MAKE) V_DEFINE='$(V_DEFINE) +define+ROM_FROM_LOADER=1'
 
+# Exhaustive check of the trailer picture generator against the trailer ROM,
+# decoded the way the reference driver's gfx layout says it should be. Walks all
+# eight rotation frames with both flip bits in each combination and requires an
+# exact match, which the game itself cannot be driven into: it holds the trailer
+# at one rotation for most of a run, and working the back wheel hard enough to
+# turn it jackknifes and ends the game.
+#   make trailer-test
+trailer-test:
+	$V --cc --exe --build -Wno-fatal --top-module trailer --Mdir ./obj_tb \
+		-o tb_trailer ../rtl/trailer.v ../rtl/memories.v tb/tb_trailer.cpp
+	./obj_tb/tb_trailer
+
 fast:
 	(cd obj_dir; rm -f *.o ; make OPT="-fcompare-elim -fcprop-registers -fguess-branch-probability -fauto-inc-dec -fif-conversion2 -fif-conversion -fipa-pure-const -fdce -fipa-profile -fipa-reference -fmerge-constants -fsplit-wide-types -fdefer-pop -fdse -ftree-ccp -ftree-ch -ftree-fre -ftree-dce -ftree-dse -ftree-builtin-call-dce -ftree-copyrename -ftree-dominator-opts -ftree-forwprop -ftree-phiprop -ftree-sra -ftree-pta -ftree-ter -funit-at-a-time -ftree-bit-ccp -falign-functions  -falign-jumps -falign-loops  -falign-labels -fcaller-saves -fcrossjumping -fcse-follow-jumps -fcse-skip-blocks -fdelete-null-pointer-checks -fdevirtualize -fexpensive-optimizations -fgcse  -fgcse-lm -finline-small-functions -findirect-inlining -fipa-sra -foptimize-sibling-calls -fpartial-inlining -fpeephole2 -fregmove -freorder-blocks  -freorder-functions -frerun-cse-after-loop -fsched-interblock  -fsched-spec -fschedule-insns -fschedule-insns2 -fstrict-aliasing -fstrict-overflow -ftree-switch-conversion -ftree-pre -ftree-vrp" -f Vemu.mk)
 
 clean:
 	rm -f obj_dir/*
+	rm -rf obj_tb

@@ -125,6 +125,22 @@ Pass `--game 1` for Fire Truck, which shares the same core. It has no gears, so
 those two buttons carry the horn and the bell instead, and the second pad's
 left and right drive the back player's wheel.
 
+Fire Truck's cabinet switch defaults to the two-player machine, and on that
+machine the front player's own start button does not begin a game. Press
+**Start Both** instead. Coin up, then Start Both, and the score line replaces
+"PRESS START". Smokey Joe is the one-player cabinet, where Start 1P is the
+right button. In a script the two wheels are `left`/`right` for the front
+player and `left2`/`right2` for the back player:
+
+```sh
+./obj_dir/Vemu --game 1 --input "60-80:coin, 150-210:start3, 250-1200:gas, 400-900:left2"
+```
+
+`make trailer-test` walks the trailer picture generator through all eight
+rotation frames with both flip bits in every combination and requires each one
+to match the trailer ROM exactly. The game itself cannot be driven into most of
+those states, so this is the only way they get covered.
+
 ### GHDL simulation (legacy VHDL)
 
 From `sim/`: edit `run.sh` so `GHDL` points at your local GHDL build, then
