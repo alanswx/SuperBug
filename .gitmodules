@@ -1,0 +1,12 @@
+[submodule "mame"]
+	path = mame
+	url = https://github.com/mamedev/mame.git
+[submodule "superbug"]
+	path = superbug
+	url = https://github.com/historicalsource/superbug.git
+[submodule "fire-truck"]
+	path = fire-truck
+	url = https://github.com/historicalsource/fire-truck.git
+[submodule "monte-carlo"]
+	path = monte-carlo
+	url = https://github.com/historicalsource/monte-carlo.git
